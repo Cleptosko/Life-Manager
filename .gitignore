@@ -1,0 +1,13 @@
+# --- Ancienne application de bureau (ignorée : on ne garde que le site) ---
+dist/
+Flow.pyw
+Flow.spec
+flow.ico
+kanban.html
+Lancer Flow.bat
+build/
+__pycache__/
+*.pyc
+
+# --- Interne ---
+.freebuff/

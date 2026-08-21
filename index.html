@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Life Manager</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script defer src="supabase-config.js"></script>
+<script defer src="app.js"></script>
+</head>
+<body>
+
+<!-- ===== Authentification ===== -->
+<div id="view-auth" class="hidden">
+  <div class="auth-wrap">
+    <div class="brand">
+      <span class="logo">🌿</span>
+      <h1>Life Manager</h1>
+    </div>
+    <p class="tagline">Organise ta vie, simplement.</p>
+
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button id="auth-tab-login" class="auth-tab active" type="button">Connexion</button>
+        <button id="auth-tab-signup" class="auth-tab" type="button">Inscription</button>
+      </div>
+      <h2 id="auth-title">Content de te revoir</h2>
+      <p class="auth-sub" id="auth-subtitle">Connecte-toi pour retrouver ton espace.</p>
+
+      <form id="auth-form" novalidate>
+        <label class="field">
+          <span>Email</span>
+          <input type="email" id="auth-email" placeholder="toi@exemple.com" autocomplete="email" required>
+        </label>
+        <label class="field">
+          <span>Mot de passe</span>
+          <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" required>
+        </label>
+        <label class="field hidden" id="auth-username-wrap">
+          <span>Nom d'utilisateur</span>
+          <input type="text" id="auth-username" placeholder="Ton pseudo" autocomplete="username">
+        </label>
+        <p class="auth-error" id="auth-error"></p>
+        <button type="submit" class="btn-primary btn-block" id="auth-submit">Se connecter</button>
+      </form>
+    </div>
+
+    <div class="demo-banner hidden" id="auth-demo-banner">
+      ⚠️ <strong>Mode démo</strong> — comptes et données stockés dans ce navigateur uniquement.
+      Configure <code>supabase-config.js</code> pour de vrais comptes.
+    </div>
+  </div>
+</div>
+
+<!-- ===== Application ===== -->
+<div id="view-app" class="hidden">
+  <aside class="sidebar">
+    <div class="brand side-brand">
+      <span class="logo">🌿</span>
+      <span>Life Manager</span>
+    </div>
+    <nav class="nav">
+      <button id="nav-dashboard" class="nav-item active" type="button">🏠 <span>Tableau de bord</span></button>
+      <button id="nav-schedule" class="nav-item" type="button">📅 <span>Emploi du temps</span></button>
+      <button id="nav-todos" class="nav-item" type="button">✅ <span>To-Do List</span></button>
+    </nav>
+    <div class="sidebar-user">
+      <div class="avatar">👤</div>
+      <div class="user-meta">
+        <div class="uname" id="sidebar-username">—</div>
+        <div class="umail" id="sidebar-email">—</div>
+      </div>
+      <button id="btn-logout" class="logout" type="button" title="Se déconnecter">⏻</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- Tableau de bord -->
+    <section id="page-dashboard" class="page">
+      <header class="page-head">
+        <div>
+          <h2 id="dash-greeting">Bonjour</h2>
+          <p class="page-sub"><span id="dash-date"></span> · <span id="dash-clock"></span></p>
+        </div>
+      </header>
+
+      <div class="cards">
+        <div class="stat-card">
+          <span class="stat-num" id="dash-event-today">0</span>
+          <span class="stat-label">Événement(s) aujourd'hui</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="dash-todo-pending">0</span>
+          <span class="stat-label">Tâche(s) en attente</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="dash-week">—</span>
+          <span class="stat-label">Semaine en cours</span>
+        </div>
+        <div class="stat-card wide">
+          <span class="stat-label">Prochain événement</span>
+          <span class="stat-next" id="dash-next-event">—</span>
+        </div>
+      </div>
+
+      <div class="dash-cols">
+        <div class="panel">
+          <h3>Aujourd'hui</h3>
+          <div id="dash-today-list" class="dash-list"></div>
+        </div>
+        <div class="panel">
+          <h3>À faire</h3>
+          <div id="dash-todos-list" class="dash-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Emploi du temps -->
+    <section id="page-schedule" class="page hidden">
+      <div class="schedule-toolbar">
+        <div class="view-switch">
+          <button class="cal-view-btn" data-view="day" type="button">Jour</button>
+          <button class="cal-view-btn" data-view="week" type="button">Semaine</button>
+          <button class="cal-view-btn active" data-view="month" type="button">Mois</button>
+          <button class="cal-view-btn" data-view="year" type="button">Année</button>
+        </div>
+        <button id="cal-add-event" class="btn-primary" type="button">＋ Événement</button>
+        <div class="cal-nav">
+          <button id="cal-prev" class="icon-btn" type="button">‹</button>
+          <button id="cal-today" type="button">Aujourd'hui</button>
+          <button id="cal-next" class="icon-btn" type="button">›</button>
+          <span id="cal-label" class="cal-label"></span>
+        </div>
+      </div>
+      <div id="calendar" class="calendar"></div>
+    </section>
+
+    <!-- To-Do List -->
+    <section id="page-todos" class="page hidden">
+      <header class="page-head">
+        <h2>To-Do List</h2>
+        <div class="todo-add-row">
+          <input id="todo-input" type="text" placeholder="Ajouter une tâche…">
+          <select id="todo-priority">
+            <option value="medium">Moyenne</option>
+            <option value="high">Haute</option>
+            <option value="low">Basse</option>
+          </select>
+          <button id="todo-add" class="btn-primary" type="button">Ajouter</button>
+        </div>
+      </header>
+      <div class="todo-progress">
+        <div class="todo-bar"><div id="todo-progress-fill"></div></div>
+        <span id="todo-progress-label">0 / 0</span>
+      </div>
+      <div class="todo-filters">
+        <button class="tf active" data-filter="all" type="button">Toutes</button>
+        <button class="tf" data-filter="active" type="button">À faire</button>
+        <button class="tf" data-filter="done" type="button">Terminées</button>
+      </div>
+      <ul id="todo-list" class="todo-list"></ul>
+    </section>
+  </main>
+</div>
+
+<!-- ===== Modale événement ===== -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modal-title">Nouvel événement</h2>
+    <label class="field"><span>Titre</span><input id="ev-title" type="text" placeholder="Ex : Réunion d'équipe"></label>
+    <div class="row">
+      <label class="field grow"><span>Date</span><input id="ev-date" type="date"></label>
+      <label class="field check"><input id="ev-allday" type="checkbox"><span>Journée entière</span></label>
+    </div>
+    <div class="row" id="ev-times">
+      <label class="field"><span>Début</span><input id="ev-start" type="time"></label>
+      <label class="field"><span>Fin</span><input id="ev-end" type="time"></label>
+    </div>
+    <div class="modal-footer">
+      <button id="modal-delete" class="btn-danger" type="button" style="display:none">Supprimer</button>
+      <span class="spacer"></span>
+      <button id="modal-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="modal-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
