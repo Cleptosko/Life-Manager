@@ -733,6 +733,8 @@ let ttModalMode = null;       // "add" | "edit" | "view"
 let ttModalActivityId = null;
 let ttPendingDay = 0;
 let ttPendingStart = "08:00";
+let ttLanePref = {};          // preference de couloir (session, mode edition)
+let ttPendingCol = -1;        // couloir choisi a l'ajout
 
 function ttSlotMin() { return (ttSettings && ttSettings.slot_min) || 60; }
 function ttRowH() { return SLOT_H30 * (ttSlotMin() / 30); }
@@ -815,6 +817,46 @@ function layoutDay(dayIndex, extraAct, exceptId) {
   return { items: res, overflow };
 }
 
+/* Mode edition : 3 couloirs fixes (1/3 de largeur), toujours cliquables */
+function layoutDayEdit(dayIndex, extraAct, exceptId, prefCol) {
+  const cancelled = ttCancelledIds();
+  const acts = ttActivities
+    .filter((a) => a.day_of_week === dayIndex && a.id !== exceptId)
+    .slice();
+  if (extraAct) acts.push(extraAct);
+  acts.sort((a, b) => ttMinutes(a.start_time) - ttMinutes(b.start_time));
+
+  const slotMin = ttSlotMin();
+  const placed = [];
+  const res = [];
+  let overflow = false;
+  for (const a of acts) {
+    const s = ttSlotOf(ttMinutes(a.start_time));
+    const e = Math.max(s + 1, Math.ceil((ttMinutes(a.end_time) - TT_START * 60) / slotMin));
+    const want = (a === extraAct && prefCol != null && prefCol >= 0 && prefCol < TT_MAX_PER_CELL)
+      ? prefCol
+      : (ttLanePref[a.id] != null ? ttLanePref[a.id] : -1);
+    let col = -1;
+    if (want >= 0 && !placed.some((p) => p.col === want && p.s < e && s < p.e)) col = want;
+    if (col === -1) {
+      for (let c = 0; c < TT_MAX_PER_CELL; c++) {
+        if (!placed.some((p) => p.col === c && p.s < e && s < p.e)) { col = c; break; }
+      }
+    }
+    if (col === -1) { overflow = true; col = TT_MAX_PER_CELL - 1; }
+    placed.push({ s, e, col });
+    res.push({ act: a, s, e, col, cancelled: cancelled.has(a.id),
+      cf: col / TT_MAX_PER_CELL, wf: 1 / TT_MAX_PER_CELL, dur: Math.max(1, e - s) });
+  }
+  return { items: res, overflow };
+}
+
+function layoutForMode(dayIndex, extraAct, exceptId, prefCol) {
+  return ttEditMode
+    ? layoutDayEdit(dayIndex, extraAct, exceptId, prefCol)
+    : layoutDay(dayIndex, extraAct, exceptId);
+}
+
 function ttSubslotsHtml(dayIndex, slotIndex) {
   let h = "";
   for (let c = 0; c < TT_MAX_PER_CELL; c++) {
@@ -849,10 +891,10 @@ function renderTTBoard() {
     }
   }
   for (let d = 0; d < 7; d++) {
-    const laid = layoutDay(d);
+    const laid = layoutForMode(d);
     for (const L of laid.items) {
       const a = L.act;
-      html += '<button class="tt-activity c' + activityColorIndex(a) + (L.cancelled ? " cancelled" : "") + (L.wf < 0.45 ? " crowded" : "") + '"' +
+      html += '<button class="tt-activity c' + activityColorIndex(a) + (L.cancelled ? " cancelled" : "") + (ttEditMode || L.wf < 0.45 ? " crowded" : "") + '"' +
         ' style="top:' + (L.s * rowH) + 'px;height:' + (L.dur * rowH - 2) + 'px;' +
         '--d:' + d + ';--cf:' + L.cf + ';--wf:' + L.wf + '"' +
         ' data-id="' + a.id + '">' +
@@ -864,8 +906,9 @@ function renderTTBoard() {
   board.innerHTML = html;
 }
 
-function openTTAdd(dayIndex, slotIndex) {
+function openTTAdd(dayIndex, slotIndex, col) {
   ttPendingDay = (dayIndex == null) ? ttDayIndex() : dayIndex;
+  ttPendingCol = (col == null || col < 0 || col >= TT_MAX_PER_CELL) ? -1 : col;
   const slotMin = ttSlotMin();
   const startMins = (slotIndex == null) ? TT_START * 60 + 60 : TT_START * 60 + slotIndex * slotMin;
   ttPendingStart = ttMinsToTime(startMins);
@@ -883,6 +926,7 @@ function closeTTModal() {
   $("#modal-tt").classList.remove("open");
   ttModalMode = null;
   ttModalActivityId = null;
+  ttPendingCol = -1;
 }
 
 function renderTTModal() {
@@ -897,11 +941,10 @@ function renderTTModal() {
     body.innerHTML =
       '<p class="tt-view-meta">' + DAYS_FULL[a.day_of_week] + ' · ' + fmtTTime(a.start_time) + ' – ' + fmtTTime(a.end_time) + '</p>' +
       (cancelled ? '<p><span class="tt-view-badge">Annulée cette semaine</span></p>' : '') +
-      '<div class="tt-view-desc" id="tt-desc" style="display:none">' +
+      '<div class="tt-view-desc">' +
         (a.description ? '<p>' + esc(a.description) + '</p>' : '<p class="tt-desc-empty">Aucune description.</p>') +
       '</div>';
     footer.innerHTML =
-      '<button class="btn-ghost" data-act="toggle-desc">Voir la description</button>' +
       '<span class="spacer"></span>' +
       '<button class="btn-danger" data-act="cancel">' + (cancelled ? 'Réactiver' : 'Annuler pour la semaine') + '</button>';
     return;
@@ -945,14 +988,16 @@ async function saveTTActivityFromModal() {
     start_time: start,
     end_time: end,
   };
-  const { overflow } = layoutDay(candidate.day_of_week, candidate, ttModalActivityId);
+  const { overflow } = layoutForMode(candidate.day_of_week, candidate, ttModalActivityId, ttPendingCol);
   if (overflow) {
     alert("Cette case est pleine : 3 activités maximum par créneau.");
     return;
   }
   try {
-    await Backend.saveTimetableActivity(candidate);
+    const saved = await Backend.saveTimetableActivity(candidate);
     await Backend.loadTimetable();
+    if (saved && saved.id && ttPendingCol >= 0) ttLanePref[saved.id] = ttPendingCol;
+    ttPendingCol = -1;
     closeTTModal();
     renderTimetable();
     renderDashboard();
@@ -1180,7 +1225,7 @@ $("#tt-slot").addEventListener("change", async () => {
 $("#tt-board").addEventListener("click", (e) => {
   const sub = e.target.closest(".tt-subslot");
   if (sub && ttEditMode) {
-    openTTAdd(Number(sub.dataset.day), Number(sub.dataset.slot));
+    openTTAdd(Number(sub.dataset.day), Number(sub.dataset.slot), Number(sub.dataset.col));
     return;
   }
   const act = e.target.closest(".tt-activity");
@@ -1202,11 +1247,6 @@ $("#ttm-footer").addEventListener("click", async (e) => {
   try {
     if (act === "close") {
       closeTTModal();
-    } else if (act === "toggle-desc") {
-      const d = $("#tt-desc");
-      const hidden = d.style.display === "none";
-      d.style.display = hidden ? "block" : "none";
-      btn.textContent = hidden ? "Masquer la description" : "Voir la description";
     } else if (act === "cancel") {
       if (!a) return;
       const cancelled = ttCancelledIds().has(a.id);
@@ -1219,6 +1259,7 @@ $("#ttm-footer").addEventListener("click", async (e) => {
       await saveTTActivityFromModal();
     } else if (act === "del") {
       if (!a) return;
+      delete ttLanePref[a.id];
       await Backend.deleteTimetableActivity(a.id);
       await Backend.loadTimetable();
       closeTTModal();
