@@ -156,6 +156,9 @@ input, select, textarea { font-family: inherit; }
   align-items: center;
   justify-content: center;
   padding: 24px;
+  background:
+    radial-gradient(760px 460px at 50% -12%, rgba(var(--accent-rgb), 0.17), transparent 62%),
+    radial-gradient(640px 400px at 88% 118%, rgba(var(--accent-rgb), 0.10), transparent 58%);
 }
 .auth-wrap { width: min(100%, 420px); }
 
@@ -173,7 +176,7 @@ input, select, textarea { font-family: inherit; }
 
 .auth-card {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius);
   padding: 26px;
   box-shadow: var(--shadow);
