@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Life Manager</title>
-<link rel="stylesheet" href="style.css?v=20260822j">
+<link rel="stylesheet" href="style.css?v=20260822k">
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="supabase-config.js"></script>
-<script defer src="app.js?v=20260822g"></script>
+<script defer src="app.js?v=20260822h"></script>
 </head>
 <body>
 
@@ -65,6 +65,8 @@
       <button id="nav-schedule" class="nav-item" type="button">🗓 <span>Agenda</span></button>
       <button id="nav-timetable" class="nav-item" type="button">🏫 <span>Emploi du temps</span></button>
       <button id="nav-todos" class="nav-item" type="button">✅ <span>To-Do List</span></button>
+      <button id="nav-weather" class="nav-item" type="button">🌦 <span>Météo</span></button>
+      <button id="nav-projects" class="nav-item" type="button">📁 <span>Projets</span></button>
     </nav>
     <div class="sidebar-user">
       <div class="avatar">👤</div>
@@ -105,6 +107,12 @@
         <div class="stat-card">
           <span class="stat-num" id="dash-course-today">0</span>
           <span class="stat-label">Activité(s) aujourd'hui</span>
+        </div>
+        <div class="stat-card weather-card" id="dash-weather">
+          <span class="stat-label">Météo</span>
+          <div class="weather-now" id="weather-now">
+            <span class="weather-loading">Chargement…</span>
+          </div>
         </div>
         <div class="stat-card wide">
           <span class="stat-label">Prochain événement</span>
@@ -203,6 +211,32 @@
       </div>
       <ul id="todo-list" class="todo-list"></ul>
     </section>
+
+    <!-- Meteo -->
+    <section id="page-weather" class="page hidden">
+      <header class="page-head">
+        <div>
+          <h2>Meteo</h2>
+          <p class="page-sub" id="weather-location">-</p>
+        </div>
+        <div class="weather-search-wrap">
+          <input id="weather-city-search" type="text" placeholder="Rechercher une ville..." class="weather-city-input">
+          <button id="weather-city-btn" class="btn-ghost" type="button">Rechercher</button>
+        </div>
+      </header>
+      <div class="weather-weekly" id="weather-weekly"></div>
+    </section>
+
+    <!-- Projets -->
+    <section id="page-projects" class="page hidden">
+      <header class="page-head">
+        <h2>Projets</h2>
+        <button id="proj-new" class="btn-primary" type="button">+ Nouveau projet</button>
+      </header>
+      <div id="proj-list" class="proj-list"></div>
+      <div id="proj-detail" class="proj-detail hidden"></div>
+    </section>
+
   </main>
 </div>
 
@@ -258,6 +292,22 @@
       <span class="spacer"></span>
       <button id="todom-cancel" class="btn-ghost" type="button">Annuler</button>
       <button id="todom-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modale projet ===== -->
+<div class="modal-overlay" id="modal-proj">
+  <div class="modal">
+    <button class="modal-x" id="projm-close" type="button" title="Fermer">✕</button>
+    <h2 id="projm-title">Nouveau projet</h2>
+    <label class="field"><span>Nom</span><input id="projm-name" type="text" placeholder="Ex : Rénovation salon"></label>
+    <label class="field"><span>Description</span><textarea id="projm-desc" rows="3" placeholder="Objectif, idées, infos…"></textarea></label>
+    <div class="modal-footer">
+      <button id="projm-del" class="btn-danger" type="button" style="display:none">Supprimer</button>
+      <span class="spacer"></span>
+      <button id="projm-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="projm-save" class="btn-primary" type="button">Enregistrer</button>
     </div>
   </div>
 </div>

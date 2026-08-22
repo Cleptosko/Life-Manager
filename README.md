@@ -151,5 +151,11 @@ alter table public.todos add column if not exists due_date date;
 3. Le site sera disponible sur :
    `https://TON-USERNAME.github.io/life-manager/`
 
+
+
+### Nouveau : Projets
+
+
+
 > Ne commite jamais ta clé **service_role** (secrète). La clé `anon` publique
 > est la seule à mettre dans `supabase-config.js`.

@@ -21,6 +21,11 @@ let todos = [];
 let ttActivities = [];       // activités récurrentes de l'emploi du temps
 let ttCancellations = [];    // annulations ponctuelles (par semaine)
 let ttSettings = null;       // null = emploi du temps pas encore créé ; sinon { slot_min }
+let weatherCache = null;      // { lat, lon, city, current, daily, fetchedAt }
+let weatherCity = null;       // ville manuelle
+let projects = [];
+let projectTasks = [];
+let projectDetailId = null;
 
 /* ===================== Utilitaires ===================== */
 const $ = (sel) => document.querySelector(sel);
@@ -98,6 +103,10 @@ const LS_TODOS = "lm_todos";
 const LS_TT = "lm_tt_activities";
 const LS_TTC = "lm_tt_cancellations";
 const LS_TTS = "lm_tt_settings";
+const LS_WEATHER = "lm_weather";
+const LS_WEATHER_CITY = "lm_weather_city";
+const LS_PROJECTS = "lm_projects";
+const LS_PROJECT_TASKS = "lm_project_tasks";
 
 function lsGet(k, fallback) {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
@@ -447,6 +456,10 @@ async function enterApp() {
   await Backend.loadTodos();
   await Backend.loadTimetable();
   await Backend.loadTimetableSettings();
+  await Backend.loadProjects();
+  await Backend.loadProjectTasks();
+  loadWeatherCache();
+  fetchWeather(false);
   $("#view-auth").classList.add("hidden");
   $("#view-app").classList.remove("hidden");
   $("#sidebar-username").textContent = session.username;
@@ -463,8 +476,8 @@ function showAuth() {
 }
 
 /* ===================== Navigation ===================== */
-const PAGES = ["dashboard", "schedule", "timetable", "todos"];
-const ACCENTS = { dashboard: "green", schedule: "blue", timetable: "violet", todos: "yellow" };
+const PAGES = ["dashboard", "schedule", "timetable", "todos", "weather", "projects"];
+const ACCENTS = { dashboard: "green", schedule: "blue", timetable: "violet", todos: "yellow", weather: "cyan", projects: "green" };
 
 function navigate(page) {
   PAGES.forEach((p) => {
@@ -476,6 +489,8 @@ function navigate(page) {
   if (page === "schedule") renderSchedule();
   if (page === "timetable") renderTimetable();
   if (page === "todos") renderTodos();
+  if (page === "weather") renderWeatherPage();
+  if (page === "projects") renderProjects();
 }
 
 /* ===================== Tableau de bord ===================== */
@@ -519,6 +534,8 @@ function renderDashboard() {
   $("#dash-todos-list").innerHTML = pendingTodos.length
     ? '<ul class="dash-todo">' + pendingTodos.slice(0, 5).map((t) => '<li>' + esc(t.title) + '</li>').join("") + '</ul>'
     : '<p class="empty">Toutes les tâches sont terminées ✅</p>';
+
+  renderWeatherDashboard();
 }
 
 function updateClock() {
@@ -1180,6 +1197,348 @@ async function handleTodoListClick(e) {
   }
 }
 
+
+/* ===================== Météo ===================== */
+const WEATHER_CODES = {
+  0: ["☀️", "Ensoleillé"], 1: ["🌤", "Peu nuageux"], 2: ["⛅", "Partiellement nuageux"],
+  3: ["☁️", "Nuageux"], 45: ["🌫", "Brouillard"], 48: ["🌫", "Brouillard givrant"],
+  51: ["🌦", "Bruine légère"], 53: ["🌦", "Bruine"], 55: ["🌧", "Bruine dense"],
+  61: ["🌧", "Pluie légère"], 63: ["🌧", "Pluie"], 65: ["🌧", "Pluie forte"],
+  71: ["🌨", "Neige légère"], 73: ["🌨", "Neige"], 75: ["❄️", "Neige forte"],
+  77: ["🌨", "Grains de neige"], 80: ["🌦", "Averses légères"], 81: ["🌧", "Averses"],
+  82: ["⛈", "Averses violentes"], 85: ["🌨", "Averses de neige légères"], 86: ["❄️", "Averses de neige"],
+  95: ["⛈", "Orage"], 96: ["⛈", "Orage avec grêle"], 99: ["⛈", "Orage violent avec grêle"]
+};
+function weatherEmoji(code) { const w = WEATHER_CODES[code]; return w ? w[0] : "🌤"; }
+function weatherLabel(code) { const w = WEATHER_CODES[code]; return w ? w[1] : "Inconnu"; }
+
+function loadWeatherCache() {
+  weatherCache = lsGet(LS_WEATHER + "_" + session.userId, null);
+  weatherCity = lsGet(LS_WEATHER_CITY + "_" + session.userId, null);
+}
+function saveWeatherCache(data) {
+  if (!session) return;
+  weatherCache = { ...data, fetchedAt: Date.now() };
+  lsSet(LS_WEATHER + "_" + session.userId, weatherCache);
+  lsSet(LS_WEATHER_CITY + "_" + session.userId, weatherCity);
+}
+function weatherCacheValid() {
+  return weatherCache && weatherCache.fetchedAt && (Date.now() - weatherCache.fetchedAt < 1800000);
+}
+
+async function fetchWeather(force) {
+  if (!force && weatherCacheValid()) return;
+  let lat, lon;
+  if (weatherCity) {
+    try {
+      const geoRes = await fetch("https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(weatherCity) + "&count=1&language=fr");
+      const geoData = await geoRes.json();
+      if (geoData.results && geoData.results.length) {
+        lat = geoData.results[0].latitude;
+        lon = geoData.results[0].longitude;
+        if (!weatherCache) weatherCache = {};
+        weatherCache.city = geoData.results[0].name + (geoData.results[0].country ? ", " + geoData.results[0].country : "");
+      } else { return; }
+    } catch (e) { return; }
+  } else {
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+      });
+      lat = pos.coords.latitude;
+      lon = pos.coords.longitude;
+      weatherCity = null;
+    } catch (e) { return; }
+  }
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat.toFixed(4) + "&longitude=" + lon.toFixed(4) + "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=7";
+    const res = await fetch(url);
+    const data = await res.json();
+    saveWeatherCache({ lat, lon, city: weatherCache?.city || (lat.toFixed(2) + ", " + lon.toFixed(2)), current: data.current, daily: data.daily });
+  } catch (e) {}
+}
+
+function renderWeatherDashboard() {
+  const el = $("#weather-now");
+  if (!el) return;
+  if (!weatherCache || !weatherCache.current) {
+    el.innerHTML = '<span class="weather-loading">Autorise la localisation ou recherche une ville dans l\'onglet Météo 🌦</span>';
+    return;
+  }
+  const c = weatherCache.current;
+  const code = c.weather_code;
+  el.innerHTML = '<div class="weather-main"><span class="weather-emoji">' + weatherEmoji(code) + '</span>' +
+    '<span class="weather-temp">' + Math.round(c.temperature_2m) + '°C</span></div>' +
+    '<div class="weather-info"><span>' + weatherLabel(code) + '</span>' +
+    '<span class="weather-city">' + esc(weatherCache.city || "") + '</span></div>';
+}
+
+function renderWeatherPage() {
+  const locEl = $("#weather-location");
+  const weekly = $("#weather-weekly");
+  if (!weatherCache || !weatherCache.daily) {
+    locEl.textContent = "Aucune donnée météo. Recherche une ville ou active la localisation.";
+    weekly.innerHTML = "";
+    return;
+  }
+  locEl.textContent = weatherCache.city || (weatherCache.lat.toFixed(2) + ", " + weatherCache.lon.toFixed(2));
+  const d = weatherCache.daily;
+  const now = new Date();
+  let html = "";
+  for (let i = 0; i < Math.min(7, d.time.length); i++) {
+    const date = new Date(d.time[i] + "T12:00:00");
+    const dayName = i === 0 ? "Aujourd'hui" : (i === 1 ? "Demain" : DAYS_FULL[(date.getDay() + 6) % 7]);
+    const code = d.weather_code[i];
+    html += '<div class="weather-day">' +
+      '<div class="wd-name">' + dayName + '</div>' +
+      '<div class="wd-date">' + fmtDateShort(date) + '</div>' +
+      '<div class="wd-emoji">' + weatherEmoji(code) + '</div>' +
+      '<div class="wd-label">' + weatherLabel(code) + '</div>' +
+      '<div class="wd-temps"><span class="wd-hi">' + Math.round(d.temperature_2m_max[i]) + '°</span>' +
+      '<span class="wd-lo">' + Math.round(d.temperature_2m_min[i]) + '°</span></div>' +
+      (d.precipitation_probability_max[i] ? '<div class="wd-rain">💧 ' + d.precipitation_probability_max[i] + '%</div>' : '') +
+      '</div>';
+  }
+  weekly.innerHTML = html;
+}
+
+async function searchWeatherCity() {
+  const input = $("#weather-city-search");
+  const city = input.value.trim();
+  if (!city) return;
+  weatherCity = city;
+  saveWeatherCache(weatherCache || {});
+  await fetchWeather(true);
+  renderWeatherPage();
+  renderWeatherDashboard();
+}
+
+
+/* ===================== Projets ===================== */
+let projModalId = null;
+
+const BackendProj = {
+  async loadProjects() {
+    if (DEMO) { projects = lsGet(LS_PROJECTS + "_" + session.userId, []); return projects; }
+    try {
+      const { data, error } = await supabaseClient.from("projects").select("*").eq("user_id", session.userId).order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      projects = data || [];
+      return projects;
+    } catch (err) {
+      if (/could not find the table|does not exist/i.test(String(err.message))) { projects = []; return []; }
+      throw err;
+    }
+  },
+  async loadProjectTasks() {
+    if (DEMO) { projectTasks = lsGet(LS_PROJECT_TASKS + "_" + session.userId, []); return projectTasks; }
+    try {
+      const { data, error } = await supabaseClient.from("project_tasks").select("*").eq("user_id", session.userId).order("created_at", { ascending: true });
+      if (error) throw new Error(error.message);
+      projectTasks = data || [];
+      return projectTasks;
+    } catch (err) {
+      if (/could not find the table|does not exist/i.test(String(err.message))) { projectTasks = []; return []; }
+      throw err;
+    }
+  },
+  async saveProject(proj) {
+    if (DEMO) {
+      if (proj.id) { const i = projects.findIndex((p) => p.id === proj.id); if (i >= 0) projects[i] = proj; else projects.push(proj); }
+      else { proj.id = "p_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); projects.unshift(proj); }
+      lsSet(LS_PROJECTS + "_" + session.userId, projects);
+      return proj;
+    }
+    const row = { name: proj.name, description: proj.description || "" };
+    if (proj.id) {
+      const { data, error } = await supabaseClient.from("projects").update(row).eq("id", proj.id).select().single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+    const { data, error } = await supabaseClient.from("projects").insert({ ...row, user_id: session.userId }).select().single();
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  async deleteProject(id) {
+    if (DEMO) {
+      projects = projects.filter((p) => p.id !== id);
+      projectTasks = projectTasks.filter((t) => t.project_id !== id);
+      lsSet(LS_PROJECTS + "_" + session.userId, projects);
+      lsSet(LS_PROJECT_TASKS + "_" + session.userId, projectTasks);
+      return;
+    }
+    const { error } = await supabaseClient.from("projects").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+  async saveProjectTask(t) {
+    if (DEMO) {
+      if (t.id) { const i = projectTasks.findIndex((x) => x.id === t.id); if (i >= 0) projectTasks[i] = t; else projectTasks.push(t); }
+      else { t.id = "pt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); projectTasks.push(t); }
+      lsSet(LS_PROJECT_TASKS + "_" + session.userId, projectTasks);
+      return t;
+    }
+    const row = { title: t.title, done: t.done, project_id: t.project_id };
+    if (t.id) {
+      const { data, error } = await supabaseClient.from("project_tasks").update(row).eq("id", t.id).select().single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+    const { data, error } = await supabaseClient.from("project_tasks").insert({ ...row, user_id: session.userId }).select().single();
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  async deleteProjectTask(id) {
+    if (DEMO) { projectTasks = projectTasks.filter((t) => t.id !== id); lsSet(LS_PROJECT_TASKS + "_" + session.userId, projectTasks); return; }
+    const { error } = await supabaseClient.from("project_tasks").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+};
+
+Object.assign(Backend, BackendProj);
+function renderProjects() {
+  projectDetailId = null;
+  $("#proj-list").classList.remove("hidden");
+  $("#proj-detail").classList.add("hidden");
+  if (!projects.length) {
+    $("#proj-list").innerHTML = "<p class='empty'>Aucun projet. Cree ton premier projet !</p>";
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < projects.length; i++) {
+    var p = projects[i];
+    var tasks = projectTasks.filter(function(t) { return t.project_id === p.id; });
+    var done = tasks.filter(function(t) { return t.done; }).length;
+    var pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+    html += "<button class='proj-card' data-id='" + p.id + "'>" +
+      "<div class='proj-name'>" + esc(p.name) + "</div>" +
+      "<div class='proj-desc-line'>" + esc((p.description || "").slice(0, 80) + (p.description && p.description.length > 80 ? "..." : "")) + "</div>" +
+      "<div class='proj-bar-wrap'><div class='proj-bar'><div class='proj-bar-fill' style='width:" + pct + "%'></div></div>" +
+      "<span class='proj-pct'>" + pct + "%</span></div>" +
+      "</button>";
+  }
+  $("#proj-list").innerHTML = html;
+}
+
+function renderProjectDetail(projId) {
+  projectDetailId = projId;
+  var p = projects.find(function(x) { return x.id === projId; });
+  if (!p) return renderProjects();
+  $("#proj-list").classList.add("hidden");
+  var detail = $("#proj-detail");
+  detail.classList.remove("hidden");
+  var tasks = projectTasks.filter(function(t) { return t.project_id === projId; });
+  var done = tasks.filter(function(t) { return t.done; }).length;
+  var pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+  var html = "<div class='proj-detail-head'>" +
+    "<button class='btn-ghost proj-back' type='button'>Retour</button>" +
+    "<div><h2>" + esc(p.name) + "</h2>" +
+    "<button class='btn-ghost proj-edit-btn' data-id='" + p.id + "' type='button'>Modifier</button></div>" +
+    "</div>" +
+    "<div class='proj-progress'><div class='proj-bar'><div class='proj-bar-fill' style='width:" + pct + "%'></div></div>" +
+    "<span class='proj-pct'>" + done + " / " + tasks.length + " (" + pct + "%)</span></div>" +
+    "<div class='proj-detail-cols'>" +
+    "<div class='proj-detail-desc'><h3>Description</h3>" +
+    "<textarea id='proj-desc-edit' rows='6' placeholder='Objectif, idees, avancement...'>" + esc(p.description || "") + "</textarea>" +
+    "<button id='proj-desc-save' class='btn-ghost' type='button'>Enregistrer la description</button></div>" +
+    "<div class='proj-detail-tasks'><h3>Taches</h3>" +
+    "<div class='proj-task-add'><input id='proj-task-input' type='text' placeholder='Ajouter une tache...'>" +
+    "<button id='proj-task-add-btn' class='btn-primary' type='button'>+</button></div>" +
+    "<ul class='proj-task-list'>" + tasks.map(function(t) {
+      return "<li class='proj-task" + (t.done ? " done" : "") + "' data-id='" + t.id + "'>" +
+        "<button class='todo-check' data-act='ptoggle'>" + (t.done ? "OK" : "") + "</button>" +
+        "<span class='proj-task-title'>" + esc(t.title) + "</span>" +
+        "<button class='todo-del' data-act='pdel'>X</button></li>";
+    }).join("") + "</ul></div></div>";
+  detail.innerHTML = html;
+  var pti = $("#proj-task-input");
+  if (pti) pti.addEventListener("keydown", function(e) { if (e.key === "Enter") addProjectTask(); });
+}
+
+function openProjectModal(proj) {
+  projModalId = proj ? proj.id : null;
+  $("#projm-title").textContent = proj ? "Modifier le projet" : "Nouveau projet";
+  $("#projm-name").value = proj ? proj.name : "";
+  $("#projm-desc").value = proj ? (proj.description || "") : "";
+  $("#projm-del").style.display = proj ? "" : "none";
+  $("#modal-proj").classList.add("open");
+  setTimeout(function() { $("#projm-name").focus(); }, 60);
+}
+
+function closeProjectModal() {
+  $("#modal-proj").classList.remove("open");
+  projModalId = null;
+}
+
+async function saveProjectFromModal() {
+  var name = $("#projm-name").value.trim();
+  if (!name) { $("#projm-name").focus(); return; }
+  try {
+    await Backend.saveProject({ id: projModalId, name: name, description: $("#projm-desc").value.trim() });
+    await Backend.loadProjects();
+    closeProjectModal();
+    if (projectDetailId) renderProjectDetail(projectDetailId);
+    else renderProjects();
+  } catch (err) { alert(err.message || "Erreur lors de l'enregistrement."); }
+}
+
+async function deleteProjectFromModal() {
+  if (!projModalId) return;
+  try {
+    await Backend.deleteProject(projModalId);
+    await Backend.loadProjects();
+    await Backend.loadProjectTasks();
+    closeProjectModal();
+    projectDetailId = null;
+    renderProjects();
+  } catch (err) { alert(err.message || "Erreur lors de la suppression."); }
+}
+
+async function addProjectTask() {
+  if (!projectDetailId) return;
+  var input = $("#proj-task-input");
+  var title = input.value.trim();
+  if (!title) return;
+  try {
+    await Backend.saveProjectTask({ id: null, project_id: projectDetailId, title: title, done: false });
+    await Backend.loadProjectTasks();
+    input.value = "";
+    renderProjectDetail(projectDetailId);
+  } catch (err) { alert(err.message || "Erreur lors de l'ajout."); }
+}
+
+async function handleProjectTaskClick(e) {
+  var li = e.target.closest(".proj-task");
+  if (!li) return;
+  var id = li.dataset.id;
+  var actEl = e.target.closest("[data-act]");
+  if (!actEl) return;
+  var act = actEl.dataset.act;
+  var t = projectTasks.find(function(x) { return x.id === id; });
+  if (!t) return;
+  try {
+    if (act === "ptoggle") {
+      await Backend.saveProjectTask({ id: t.id, project_id: t.project_id, title: t.title, done: !t.done });
+    } else if (act === "pdel") {
+      await Backend.deleteProjectTask(id);
+    }
+    await Backend.loadProjectTasks();
+    if (projectDetailId) renderProjectDetail(projectDetailId);
+  } catch (err) { alert(err.message || "Erreur."); }
+}
+
+async function saveProjectDesc() {
+  if (!projectDetailId) return;
+  var p = projects.find(function(x) { return x.id === projectDetailId; });
+  if (!p) return;
+  p.description = $("#proj-desc-edit").value;
+  try {
+    await Backend.saveProject(p);
+    await Backend.loadProjects();
+    alert("Description enregistree !");
+  } catch (err) { alert(err.message || "Erreur."); }
+}
+
+
 /* ===================== Thème clair / sombre ===================== */
 let theme = "dark";
 try { theme = localStorage.getItem("lm_theme") || "dark"; } catch (e) {}
@@ -1208,6 +1567,8 @@ $("#nav-dashboard").addEventListener("click", () => navigate("dashboard"));
 $("#nav-schedule").addEventListener("click", () => navigate("schedule"));
 $("#nav-timetable").addEventListener("click", () => navigate("timetable"));
 $("#nav-todos").addEventListener("click", () => navigate("todos"));
+$("#nav-weather").addEventListener("click", () => navigate("weather"));
+$("#nav-projects").addEventListener("click", () => navigate("projects"));
 $("#btn-logout").addEventListener("click", async () => {
   await Backend.signOut();
   showAuth();
@@ -1324,10 +1685,37 @@ $$(".tf").forEach((b) => b.addEventListener("click", () => {
   renderTodos();
 }));
 
+var wcb = $("#weather-city-btn"); if (wcb) wcb.addEventListener("click", searchWeatherCity);
+var wcs = $("#weather-city-search"); if (wcs) wcs.addEventListener("keydown", (e) => { if (e.key === "Enter") searchWeatherCity(); });
+
+var pn = $("#proj-new"); if (pn) pn.addEventListener("click", () => openProjectModal(null));
+var pl = $("#proj-list"); if (pl) pl.addEventListener("click", (e) => {
+  const card = e.target.closest(".proj-card");
+  if (card) renderProjectDetail(card.dataset.id);
+});
+var pd = $("#proj-detail"); if (pd) pd.addEventListener("click", (e) => {
+  const back = e.target.closest(".proj-back");
+  if (back) renderProjects();
+  const edit = e.target.closest(".proj-edit-btn");
+  if (edit) { const p = projects.find((x) => x.id === edit.dataset.id); if (p) openProjectModal(p); }
+  const saveDesc = e.target.closest("#proj-desc-save");
+  if (saveDesc) saveProjectDesc();
+  const taskAdd = e.target.closest("#proj-task-add-btn");
+  if (taskAdd) addProjectTask();
+  if (e.target.closest(".proj-task")) handleProjectTaskClick(e);
+});
+
+var ps = $("#projm-save"); if (ps) ps.addEventListener("click", saveProjectFromModal);
+var pdl = $("#projm-del"); if (pdl) pdl.addEventListener("click", deleteProjectFromModal);
+var pc = $("#projm-cancel"); if (pc) pc.addEventListener("click", closeProjectModal);
+var pcl = $("#projm-close"); if (pcl) pcl.addEventListener("click", closeProjectModal);
+var mp = $("#modal-proj"); if (mp) mp.addEventListener("click", (e) => { if (!e.target.closest(".modal")) closeProjectModal(); });
+
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if ($("#modal-todo").classList.contains("open")) closeTodoModal();
     else if ($("#modal-tt").classList.contains("open")) closeTTModal();
+    else if ($("#modal-proj").classList.contains("open")) closeProjectModal();
     else if ($("#modal").classList.contains("open")) closeModal();
   }
 });
