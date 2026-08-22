@@ -540,7 +540,6 @@ input, select, textarea { font-family: inherit; }
   border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
 }
 .tt-cell.today { background: rgba(var(--accent-rgb), 0.045); }
-.tt-cell.tt-hr, .tt-hour-label.tt-hr { border-bottom: 2px solid color-mix(in srgb, var(--border) 55%, var(--muted)); }
 .tt-grid.editing .tt-cell { cursor: pointer; }
 .tt-grid.editing .tt-cell:hover { background: rgba(var(--accent-rgb), 0.08); }
 .tt-subslot { position: absolute; top: 0; bottom: 0; cursor: pointer; display: none; }

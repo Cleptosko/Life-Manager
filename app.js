@@ -900,16 +900,13 @@ function renderTTBoard() {
   board.style.height = n * rowH + "px";
 
   let html = "";
-  const hourStep = 60 / slotMin;
   for (let i = 0; i < n; i++) {
-    const hrCls = (i % hourStep === 0) ? " tt-hr" : "";
-    html += '<div class="tt-hour-label' + hrCls + '" style="grid-row:' + (i + 1) + ';grid-column:1">' +
+    html += '<div class="tt-hour-label" style="grid-row:' + (i + 1) + ';grid-column:1">' +
       ttMinsToTime(TT_START * 60 + i * slotMin) + '</div>';
   }
   for (let i = 0; i < n; i++) {
-    const hrCls = (i % hourStep === 0) ? " tt-hr" : "";
     for (let d = 0; d < 7; d++) {
-      html += '<div class="tt-cell' + hrCls + (d === today ? " today" : "") + '"' +
+      html += '<div class="tt-cell' + (d === today ? " today" : "") + '"' +
         ' style="grid-row:' + (i + 1) + ';grid-column:' + (d + 2) + '"' +
         ' data-day="' + d + '" data-slot="' + i + '">' +
         (ttEditMode ? ttSubslotsHtml(d, i) : "") +
