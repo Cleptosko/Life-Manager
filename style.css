@@ -8,10 +8,10 @@
   --accent-line: rgba(3, 252, 73, 0.25);
   --on-accent: #04150a;
 
-  --bg: #0a0e0b;
-  --bg-2: #0d1310;
-  --surface: #121a15;
-  --surface-2: #18231b;
+  --bg-base: #0a0e0b;
+  --bg-2-base: #0d1310;
+  --surface-base: #121a15;
+  --surface-2-base: #18231b;
   --border: rgba(255, 255, 255, 0.08);
   --text: #eaf7ee;
   --muted: #8fae9a;
@@ -20,9 +20,9 @@
   --warn: #ffb020;
   --info: #4aa8ff;
 
-  --radius: 14px;
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
+  --radius: 0px;
+  --shadow: none;
+  --shadow-sm: none;
 
   /* Palette activités (6 teintes) — thème sombre */
   --pal-1: #4ade80;   --pal-1-bg: rgba(74, 222, 128, 0.14);  --pal-1-bd: rgba(74, 222, 128, 0.38);
@@ -41,6 +41,12 @@ body {
   --accent-soft: rgba(3, 252, 73, 0.13);
   --accent-glow: rgba(3, 252, 73, 0.35);
   --accent-line: rgba(3, 252, 73, 0.25);
+
+  /* Surfaces teintées par la couleur de l'onglet (fond compris) */
+  --bg: color-mix(in srgb, var(--bg-base) 92%, var(--accent));
+  --bg-2: color-mix(in srgb, var(--bg-2-base) 86%, var(--accent));
+  --surface: color-mix(in srgb, var(--surface-base) 90%, var(--accent));
+  --surface-2: color-mix(in srgb, var(--surface-2-base) 82%, var(--accent));
 }
 body[data-accent="blue"] {
   --accent: #3ea6ff; --accent-strong: #2b8cf2; --accent-rgb: 62, 166, 255;
@@ -57,15 +63,15 @@ body[data-accent="yellow"] {
 
 /* Thème clair */
 html[data-theme="light"] {
-  --bg: #f4f7f4;
-  --bg-2: #e9efe9;
-  --surface: #ffffff;
-  --surface-2: #e4ece4;
+  --bg-base: #f4f7f4;
+  --bg-2-base: #e9efe9;
+  --surface-base: #ffffff;
+  --surface-2-base: #e4ece4;
   --border: rgba(18, 38, 26, 0.12);
   --text: #17211a;
   --muted: #5c6b5f;
-  --shadow: 0 12px 32px rgba(25, 50, 35, 0.14);
-  --shadow-sm: 0 4px 14px rgba(25, 50, 35, 0.1);
+  --shadow: none;
+  --shadow-sm: none;
   --pal-1: #0a8f4a;  --pal-1-bg: rgba(10, 143, 74, 0.12);  --pal-1-bd: rgba(10, 143, 74, 0.32);
   --pal-2: #1d7ad6;  --pal-2-bg: rgba(29, 122, 214, 0.11); --pal-2-bd: rgba(29, 122, 214, 0.32);
   --pal-3: #6d4fd4;  --pal-3-bg: rgba(109, 79, 212, 0.12); --pal-3-bd: rgba(109, 79, 212, 0.32);
@@ -74,15 +80,15 @@ html[data-theme="light"] {
   --pal-6: #0d9488;  --pal-6-bg: rgba(13, 148, 136, 0.12); --pal-6-bd: rgba(13, 148, 136, 0.32);
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; border-radius: 0 !important; }
 
 html, body { margin: 0; height: 100%; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
   background:
-    radial-gradient(1000px 500px at 90% -10%, rgba(var(--accent-rgb), 0.07), transparent 60%),
-    radial-gradient(800px 400px at -10% 110%, rgba(var(--accent-rgb), 0.05), transparent 55%),
+    radial-gradient(1000px 500px at 90% -10%, rgba(var(--accent-rgb), 0.18), transparent 60%),
+    radial-gradient(800px 400px at -10% 110%, rgba(var(--accent-rgb), 0.12), transparent 55%),
     var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -98,18 +104,16 @@ input, select, textarea { font-family: inherit; }
 
 .btn-primary {
   appearance: none;
-  border: none;
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  border: 1px solid var(--accent-strong);
+  background: var(--accent);
   color: var(--on-accent);
   font-weight: 700;
   padding: 11px 18px;
-  border-radius: 11px;
   font-size: 0.95rem;
-  transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
-  box-shadow: 0 4px 18px var(--accent-glow);
+  transition: filter 0.12s ease;
 }
-.btn-primary:hover { transform: translateY(-1px); filter: brightness(1.06); }
-.btn-primary:active { transform: translateY(0); }
+.btn-primary:hover { filter: brightness(0.94); }
+.btn-primary:active { filter: brightness(0.88); }
 
 .btn-block { width: 100%; }
 
@@ -163,7 +167,6 @@ input, select, textarea { font-family: inherit; }
   border-radius: 16px;
   background: var(--accent-soft);
   border: 1px solid var(--accent-line);
-  box-shadow: 0 0 24px var(--accent-glow);
 }
 .brand h1 { font-size: 1.7rem; }
 .tagline { text-align: center; color: var(--muted); margin: 6px 0 26px; }
@@ -377,7 +380,7 @@ input, select, textarea { font-family: inherit; }
 
 .todo-progress { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .todo-bar { flex: 1; height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
-#todo-progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-strong)); border-radius: 99px; transition: width 0.35s ease; }
+#todo-progress-fill { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width 0.35s ease; }
 #todo-progress-label { color: var(--muted); font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
 
 .todo-filters { display: flex; gap: 6px; margin-bottom: 14px; }
@@ -428,7 +431,7 @@ input, select, textarea { font-family: inherit; }
 
 /* ===================== Modale ===================== */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px);
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.62);
   display: grid; place-items: center; z-index: 100;
   opacity: 0; visibility: hidden; pointer-events: none;
   transition: opacity 0.18s ease, visibility 0s linear 0.18s;
