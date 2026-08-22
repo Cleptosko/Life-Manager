@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Life Manager</title>
-<link rel="stylesheet" href="style.css?v=20260822h">
+<link rel="stylesheet" href="style.css?v=20260822i">
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="supabase-config.js"></script>
-<script defer src="app.js?v=20260822e"></script>
+<script defer src="app.js?v=20260822f"></script>
 </head>
 <body>
 
@@ -188,6 +188,7 @@
             <option value="medium">Moyenne</option>
             <option value="low">Basse</option>
           </select>
+          <input id="todo-due" type="date" title="Date limite (optionnel)">
           <button id="todo-add" class="btn-primary" type="button">Ajouter</button>
         </div>
       </header>
@@ -250,6 +251,7 @@
         <option value="low">Basse</option>
       </select>
     </label>
+    <label class="field"><span>Date limite (optionnel)</span><input id="todox-due" type="date"></label>
     <label class="field check"><input id="todox-done" type="checkbox"><span>Terminée</span></label>
     <div class="modal-footer">
       <button id="todom-del" class="btn-danger" type="button" style="display:none">Supprimer</button>

@@ -3,7 +3,7 @@
 Application web d'organisation personnelle : tableau de bord, **Agenda**
 (événements datés, vues Jour / Semaine / Mois / Année), **Emploi du temps**
 (planning hebdomadaire en grille, sans dates — le « mode scolaire ») et
-**To-Do List** (priorités + tri automatique + édition par modale).
+**To-Do List** (priorités + date limite + tri automatique + édition par modale).
 
 Couleur principale : vert `#03fc49`, avec une couleur par onglet
 (vert = tableau de bord, bleu = agenda, violet = emploi du temps,
@@ -118,6 +118,16 @@ alter table public.timetable_settings enable row level security;
 drop policy if exists "tt_settings_own" on public.timetable_settings;
 create policy "tt_settings_own" on public.timetable_settings
   for all using (auth.uid() = user_id);
+```
+
+### Nouveau : date limite des tâches (To-Do)
+
+Si ta table `todos` vient du premier script, ajoute la colonne **date limite**
+en exécutant ce bloc (réexécutable sans erreur) :
+
+```sql
+-- Ajoute une date limite optionnelle aux tâches
+alter table public.todos add column if not exists due_date date;
 ```
 
 ## Fonctionnalités de l'emploi du temps

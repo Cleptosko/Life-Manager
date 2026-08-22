@@ -107,6 +107,16 @@ function lsSet(k, v) {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {}
 }
 
+let todosDueColKnown = null; // null = inconnu ; true/false = colonne due_date presente
+async function todosDueColumnExists() {
+  if (todosDueColKnown !== null) return todosDueColKnown;
+  try {
+    const { error } = await supabaseClient.from("todos").select("due_date").limit(1);
+    todosDueColKnown = !error;
+  } catch (e) { todosDueColKnown = false; }
+  return todosDueColKnown;
+}
+
 const Backend = {
   /* ---------- Authentification ---------- */
   async signUp(email, password, username) {
@@ -225,6 +235,13 @@ const Backend = {
       return t;
     }
     const row = { title: t.title, done: t.done, priority: t.priority };
+    if (t.due_date !== undefined && t.due_date !== null) {
+      if (await todosDueColumnExists()) {
+        row.due_date = t.due_date;
+      } else if (t.due_date) {
+        throw new Error("Colonne due_date absente : exécute dans le SQL Editor Supabase : ALTER TABLE public.todos ADD COLUMN due_date date;");
+      }
+    }
     if (t.id) {
       const { data, error } = await supabaseClient.from("todos").update(row).eq("id", t.id).select().single();
       if (error) throw new Error(error.message);
@@ -618,14 +635,20 @@ function renderDay(c) {
     '<button class="cell-add" data-key="' + key + '" style="opacity:1">＋</button></div>';
   if (allDay.length) html += '<div class="day-allday">' + allDay.map(eventItem).join("") + '</div>';
 
-  html += '<div class="day-hours">';
-  for (let h = 6; h <= 22; h++) {
+  html += '<div class="day-cols">' + dayCol(0, 12, timed) + dayCol(12, 24, timed) + '</div>';
+  c.innerHTML = html;
+}
+
+function dayCol(from, to, timed) {
+  let html = '<div class="day-col"><div class="day-col-head">' + pad(from) + ':00 – ' + pad(to) + ':00</div>' +
+    '<div class="day-hours">';
+  for (let h = from; h < to; h++) {
     const hourEvents = timed.filter((e) => new Date(e.start_at).getHours() === h);
     html += '<div class="hour-row"><span class="hour-label">' + pad(h) + ':00</span>' +
       '<div class="hour-events">' + hourEvents.map(eventItem).join("") + '</div></div>';
   }
-  html += '</div>';
-  c.innerHTML = html;
+  html += '</div></div>';
+  return html;
 }
 
 function renderYear(c) {
@@ -877,13 +900,16 @@ function renderTTBoard() {
   board.style.height = n * rowH + "px";
 
   let html = "";
+  const hourStep = 60 / slotMin;
   for (let i = 0; i < n; i++) {
-    html += '<div class="tt-hour-label" style="grid-row:' + (i + 1) + ';grid-column:1">' +
+    const hrCls = (i % hourStep === 0) ? " tt-hr" : "";
+    html += '<div class="tt-hour-label' + hrCls + '" style="grid-row:' + (i + 1) + ';grid-column:1">' +
       ttMinsToTime(TT_START * 60 + i * slotMin) + '</div>';
   }
   for (let i = 0; i < n; i++) {
+    const hrCls = (i % hourStep === 0) ? " tt-hr" : "";
     for (let d = 0; d < 7; d++) {
-      html += '<div class="tt-cell' + (d === today ? " today" : "") + '"' +
+      html += '<div class="tt-cell' + hrCls + (d === today ? " today" : "") + '"' +
         ' style="grid-row:' + (i + 1) + ';grid-column:' + (d + 2) + '"' +
         ' data-day="' + d + '" data-slot="' + i + '">' +
         (ttEditMode ? ttSubslotsHtml(d, i) : "") +
@@ -939,14 +965,14 @@ function renderTTModal() {
     const cancelled = ttCancelledIds().has(a.id);
     titleEl.textContent = a.title;
     body.innerHTML =
-      '<p class="tt-view-meta">' + DAYS_FULL[a.day_of_week] + ' · ' + fmtTTime(a.start_time) + ' – ' + fmtTTime(a.end_time) + '</p>' +
-      (cancelled ? '<p><span class="tt-view-badge">Annulée cette semaine</span></p>' : '') +
+      '<p class="tt-view-meta"><span>' + DAYS_FULL[a.day_of_week] + ' · ' + fmtTTime(a.start_time) + ' – ' + fmtTTime(a.end_time) + '</span>' +
+      (cancelled ? '<span class="tt-view-badge">Annulée cette semaine</span>' : '') + '</p>' +
       '<div class="tt-view-desc">' +
         (a.description ? '<p>' + esc(a.description) + '</p>' : '<p class="tt-desc-empty">Aucune description.</p>') +
       '</div>';
     footer.innerHTML =
       '<span class="spacer"></span>' +
-      '<button class="btn-danger" data-act="cancel">' + (cancelled ? 'Réactiver' : 'Annuler pour la semaine') + '</button>';
+      '<button class="btn-danger" data-act="cancel">' + (cancelled ? 'Réactiver' : 'Annuler') + '</button>';
     return;
   }
 
@@ -1038,12 +1064,24 @@ function renderTodos() {
   $("#todo-progress-label").textContent = done + " / " + todos.length;
 }
 
+function todoDueText(t) {
+  if (!t.due_date) return "";
+  const due = parseDay(String(t.due_date).slice(0, 10));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((due - today) / 86400000);
+  if (days < 0) return '<span class="todo-due overdue">En retard de ' + (-days) + ' jour' + (-days > 1 ? "s" : "") + '</span>';
+  if (days === 0) return '<span class="todo-due due-today">Dernier jour !</span>';
+  return '<span class="todo-due">Il reste ' + days + ' jour' + (days > 1 ? "s" : "") + '</span>';
+}
+
 function todoItem(t) {
   const prio = t.priority || "medium";
   return '<li class="todo todo-p-' + prio + (t.done ? " done" : "") + '" data-id="' + t.id + '">' +
     '<button class="todo-check" data-act="toggle" title="Terminer">' + (t.done ? "✓" : "") + '</button>' +
     '<span class="todo-title">' + esc(t.title) + '</span>' +
     '<span class="prio prio-' + prio + '">' + PRIO_LABEL[prio] + '</span>' +
+    todoDueText(t) +
     '<button class="todo-edit" data-act="edit" title="Modifier">✏️</button>' +
     '<button class="todo-del" data-act="del" title="Supprimer">🗑</button>' +
     '</li>';
@@ -1057,6 +1095,7 @@ function openTodoModal(t) {
   $("#todom-title").textContent = t ? "Modifier la tâche" : "Nouvelle tâche";
   $("#todox-title").value = t ? t.title : "";
   $("#todox-priority").value = t ? (t.priority || "medium") : "medium";
+  $("#todox-due").value = t && t.due_date ? String(t.due_date).slice(0, 10) : "";
   $("#todox-done").checked = t ? !!t.done : false;
   $("#todom-del").style.display = t ? "" : "none";
   $("#modal-todo").classList.add("open");
@@ -1077,6 +1116,7 @@ async function saveTodoFromModal() {
       title,
       done: $("#todox-done").checked,
       priority: $("#todox-priority").value,
+      due_date: $("#todox-due").value || null,
     });
     await Backend.loadTodos();
     closeTodoModal();
@@ -1105,8 +1145,9 @@ async function addTodo() {
   const title = input.value.trim();
   if (!title) return;
   const priority = $("#todo-priority").value;
+  const dueDate = $("#todo-due").value || null;
   try {
-    await Backend.saveTodo({ id: null, title, done: false, priority });
+    await Backend.saveTodo({ id: null, title, done: false, priority, due_date: dueDate });
     await Backend.loadTodos();
     input.value = "";
     renderTodos();
