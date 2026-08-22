@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Life Manager</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20260822">
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="supabase-config.js"></script>
-<script defer src="app.js"></script>
+<script defer src="app.js?v=20260822"></script>
 </head>
 <body>
 
@@ -72,7 +72,10 @@
         <div class="uname" id="sidebar-username">—</div>
         <div class="umail" id="sidebar-email">—</div>
       </div>
-      <button id="btn-logout" class="logout" type="button" title="Se déconnecter">⏻</button>
+      <div class="side-actions">
+        <button id="btn-theme" class="logout" type="button" title="Mode clair">🌙</button>
+        <button id="btn-logout" class="logout" type="button" title="Se déconnecter">⏻</button>
+      </div>
     </div>
   </aside>
 
@@ -158,7 +161,16 @@
         <button id="tt-create" class="btn-primary" type="button">Créer un emploi du temps</button>
       </div>
 
-      <p id="tt-hint" class="tt-hint hidden">✏️ Mode modification : clique sur un jour (ou sur « ＋ ») pour ajouter une activité.</p>
+      <div id="tt-banner" class="tt-banner hidden">
+        <span class="tt-banner-tag">✏️ Mode édition activé</span>
+        <span class="tt-banner-sub">Clique sur une case pour ajouter, ou sur une activité pour la modifier.</span>
+        <label class="tt-slot-label">Découpage
+          <select id="tt-slot">
+            <option value="30">30 min</option>
+            <option value="60">60 min</option>
+          </select>
+        </label>
+      </div>
 
       <div id="tt-grid" class="tt-grid hidden">
         <div class="tt-head" id="tt-head"></div>
@@ -223,6 +235,29 @@
     <h2 id="ttm-title">Activité</h2>
     <div id="ttm-body"></div>
     <div class="modal-footer" id="ttm-footer"></div>
+  </div>
+</div>
+
+<!-- ===== Modale tâche (To-Do) ===== -->
+<div class="modal-overlay" id="modal-todo">
+  <div class="modal">
+    <button class="modal-x" id="todom-close" type="button" title="Fermer">✕</button>
+    <h2 id="todom-title">Modifier la tâche</h2>
+    <label class="field"><span>Titre</span><input id="todox-title" type="text" placeholder="Ex : Réviser le chapitre 3"></label>
+    <label class="field"><span>Priorité</span>
+      <select id="todox-priority">
+        <option value="high">Haute</option>
+        <option value="medium">Moyenne</option>
+        <option value="low">Basse</option>
+      </select>
+    </label>
+    <label class="field check"><input id="todox-done" type="checkbox"><span>Terminée</span></label>
+    <div class="modal-footer">
+      <button id="todom-del" class="btn-danger" type="button" style="display:none">Supprimer</button>
+      <span class="spacer"></span>
+      <button id="todom-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="todom-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
   </div>
 </div>
 

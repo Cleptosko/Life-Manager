@@ -2,10 +2,13 @@
 
 Application web d'organisation personnelle : tableau de bord, **Agenda**
 (événements datés, vues Jour / Semaine / Mois / Année), **Emploi du temps**
-(planning hebdomadaire récurrent, sans dates — le « mode scolaire ») et
-**To-Do List** (priorités + tri automatique).
+(planning hebdomadaire en grille, sans dates — le « mode scolaire ») et
+**To-Do List** (priorités + tri automatique + édition par modale).
 
-Couleur principale : `#03fc49`. Hébergement prévu : **GitHub Pages**.
+Couleur principale : vert `#03fc49`, avec une couleur par onglet
+(vert = tableau de bord, bleu = agenda, violet = emploi du temps,
+jaune = to-do). Thème **clair / sombre** commutable à tout moment.
+Hébergement prévu : **GitHub Pages**.
 
 ## Technologies
 
@@ -96,6 +99,39 @@ create policy "tt_cancellations_own" on public.timetable_cancellations
     and a.user_id = auth.uid()
   ));
 ```
+
+### Nouveau : réglages de l'emploi du temps (découpage 30/60 min)
+
+Si tu as déjà exécuté le script précédent, exécute **ce bloc séparément**
+(il est protégé : il peut être relancé sans erreur) :
+
+```sql
+-- Réglages de l'emploi du temps (découpage horaire, synchronisé)
+create table if not exists public.timetable_settings (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  slot_min int not null default 60,   -- 30 ou 60 minutes par case
+  created_at timestamptz not null default now()
+);
+
+alter table public.timetable_settings enable row level security;
+
+drop policy if exists "tt_settings_own" on public.timetable_settings;
+create policy "tt_settings_own" on public.timetable_settings
+  for all using (auth.uid() = user_id);
+```
+
+## Fonctionnalités de l'emploi du temps
+
+- Grille **Lundi → Dimanche × 07:00 → 22:00**, découpée en cases de **30 ou
+  60 minutes** (choix à la création, modifiable ensuite en mode édition,
+  sauvegardé dans Supabase).
+- **Jusqu'à 3 activités par case**, affichées côte à côte avec une couleur
+  automatique (6 teintes, lisibles en clair et en sombre).
+- **Mode lecture** : consultation seule + annulation/réactivation d'une
+  activité pour la semaine. **Mode édition** : bannière visible, cases
+  cliquables, ajout / modification / suppression.
+- Les activités annulées pour la semaine sont grisées et barrées, puis
+  réapparaissent automatiquement la semaine suivante.
 
 ## 3. Héberger sur GitHub Pages
 
