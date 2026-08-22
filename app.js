@@ -1237,7 +1237,12 @@ async function fetchWeather(force) {
         lat = geoData.results[0].latitude;
         lon = geoData.results[0].longitude;
         if (!weatherCache) weatherCache = {};
-        weatherCache.city = geoData.results[0].name + (geoData.results[0].country ? ", " + geoData.results[0].country : "");
+                var g = geoData.results[0];
+        var parts = [g.name];
+        if (g.admin2) parts.push(g.admin2);
+        if (g.postcodes && g.postcodes.length) parts.push(g.postcodes[0]);
+        if (g.country) parts.push(g.country);
+        weatherCache.city = parts.join(", ");
       } else { return; }
     } catch (e) { return; }
   } else {
