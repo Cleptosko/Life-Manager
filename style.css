@@ -193,7 +193,8 @@ input, select, textarea { font-family: inherit; }
 .page-sub { color: var(--muted); margin: 4px 0 0; font-size: 0.92rem; }
 
 /* ===================== Tableau de bord ===================== */
-.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+@media (max-width: 1200px) { .cards { grid-template-columns: 1fr 1fr; } }
 .stat-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow-sm);
@@ -352,9 +353,13 @@ input, select, textarea { font-family: inherit; }
 .prio {
   appearance: none; border: none; border-radius: 99px; padding: 4px 10px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.02em;
 }
-.prio-high { background: rgba(255, 93, 122, 0.15); color: var(--danger); }
-.prio-medium { background: rgba(255, 176, 32, 0.15); color: var(--warn); }
-.prio-low { background: rgba(74, 168, 255, 0.15); color: var(--info); }
+.prio-high { background: rgba(239, 68, 68, 0.16); color: #ef4444; }
+.prio-medium { background: rgba(245, 179, 1, 0.16); color: #f5b301; }
+.prio-low { background: rgba(100, 116, 139, 0.16); color: #8b9bb0; }
+.todo { border-left: 4px solid var(--border); }
+.todo-p-high { border-left-color: #ef4444; }
+.todo-p-medium { border-left-color: #f5b301; }
+.todo-p-low { border-left-color: #64748b; }
 .todo-del {
   appearance: none; border: none; background: transparent; color: var(--muted); font-size: 1rem;
   width: 30px; height: 30px; border-radius: 8px;
@@ -399,4 +404,98 @@ input, select, textarea { font-family: inherit; }
   .cal-week { grid-template-columns: 1fr; }
   .week-day { min-height: auto; border-right: none; border-bottom: 1px solid var(--border); }
   .year-grid { grid-template-columns: 1fr; }
+}
+
+/* ===================== Emploi du temps (hebdomadaire) ===================== */
+.tt-actions { display: flex; gap: 10px; align-items: center; }
+
+.tt-empty {
+  background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 56px 24px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+}
+.tt-empty p { color: var(--muted); margin: 0; }
+
+.tt-hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 10px; }
+
+.tt-grid {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+}
+.tt-head {
+  display: grid; grid-template-columns: 56px repeat(7, 1fr);
+  border-bottom: 1px solid var(--border); background: var(--bg-2);
+}
+.tt-corner { border-right: 1px solid var(--border); }
+.tt-day {
+  padding: 12px 6px; text-align: center; font-weight: 800; font-size: 0.82rem; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em; border-right: 1px solid var(--border);
+  position: relative;
+}
+.tt-day:last-child { border-right: none; }
+.tt-day.today { color: var(--accent); }
+.tt-day .tt-day-add {
+  display: none; position: absolute; top: 6px; right: 6px;
+  appearance: none; border: none; background: var(--accent-soft); color: var(--accent);
+  width: 22px; height: 22px; border-radius: 6px; font-size: 0.9rem; font-weight: 800; line-height: 1;
+}
+.tt-grid.editing .tt-day .tt-day-add { display: block; }
+
+.tt-scroll { overflow-x: auto; }
+.tt-board { position: relative; min-width: 560px; }
+.tt-hline { position: absolute; left: 56px; right: 0; border-top: 1px solid var(--border); height: 0; }
+.tt-hour-label {
+  position: absolute; left: 0; width: 56px; text-align: right; padding-right: 8px;
+  color: var(--muted); font-size: 0.72rem; font-weight: 700; transform: translateY(-8px);
+}
+.tt-col {
+  position: absolute; top: 0; bottom: 0;
+  left: calc(56px + var(--day) * (100% - 56px) / 7);
+  width: calc((100% - 56px) / 7);
+  border-right: 1px solid var(--border);
+}
+.tt-col.today { background: var(--accent-soft); }
+.tt-grid.editing .tt-col.clickable { cursor: pointer; }
+.tt-grid.editing .tt-col.clickable:hover { background: rgba(3, 252, 73, 0.07); }
+
+.tt-activity {
+  position: absolute;
+  left: calc(56px + var(--day) * (100% - 56px) / 7 + 3px);
+  width: calc((100% - 56px) / 7 - 6px);
+  appearance: none; border: 1px solid rgba(3, 252, 73, 0.35);
+  background: var(--accent-soft); color: var(--accent);
+  border-radius: 8px; padding: 6px 8px; text-align: left;
+  display: flex; flex-direction: column; gap: 2px; overflow: hidden;
+  font-size: 0.78rem; font-weight: 700; cursor: pointer; z-index: 2;
+  transition: filter 0.12s ease;
+}
+.tt-activity:hover { filter: brightness(1.12); }
+.tt-activity .tt-act-time { font-size: 0.66rem; font-weight: 700; opacity: 0.8; }
+.tt-activity .tt-act-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-activity.cancelled {
+  background: var(--surface-2); border-color: var(--border); color: var(--muted);
+  opacity: 0.55; text-decoration: line-through;
+}
+
+/* Modale activité (emploi du temps) */
+.modal-x {
+  position: absolute; top: 14px; right: 14px;
+  appearance: none; border: none; background: transparent; color: var(--muted);
+  width: 30px; height: 30px; border-radius: 8px; font-size: 1rem;
+}
+.modal-x:hover { color: var(--danger); background: rgba(255, 93, 122, 0.12); }
+.modal { position: relative; }
+.tt-view-meta { color: var(--muted); font-size: 0.88rem; margin: 0 0 12px; }
+.tt-view-badge {
+  display: inline-block; background: rgba(255, 176, 32, 0.15); color: var(--warn);
+  padding: 3px 10px; border-radius: 99px; font-size: 0.72rem; font-weight: 800;
+}
+.tt-view-desc {
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; font-size: 0.9rem; line-height: 1.55; margin: 12px 0 4px;
+}
+.tt-view-desc p { margin: 0; }
+.tt-desc-empty { color: var(--muted); font-style: italic; }
+
+@media (max-width: 700px) {
+  .tt-board { min-width: 500px; }
 }

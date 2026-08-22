@@ -62,7 +62,8 @@
     </div>
     <nav class="nav">
       <button id="nav-dashboard" class="nav-item active" type="button">🏠 <span>Tableau de bord</span></button>
-      <button id="nav-schedule" class="nav-item" type="button">📅 <span>Emploi du temps</span></button>
+      <button id="nav-schedule" class="nav-item" type="button">🗓 <span>Agenda</span></button>
+      <button id="nav-timetable" class="nav-item" type="button">🏫 <span>Emploi du temps</span></button>
       <button id="nav-todos" class="nav-item" type="button">✅ <span>To-Do List</span></button>
     </nav>
     <div class="sidebar-user">
@@ -97,6 +98,10 @@
         <div class="stat-card">
           <span class="stat-num" id="dash-week">—</span>
           <span class="stat-label">Semaine en cours</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="dash-course-today">0</span>
+          <span class="stat-label">Activité(s) aujourd'hui</span>
         </div>
         <div class="stat-card wide">
           <span class="stat-label">Prochain événement</span>
@@ -136,6 +141,31 @@
       <div id="calendar" class="calendar"></div>
     </section>
 
+    <!-- Emploi du temps (hebdomadaire) -->
+    <section id="page-timetable" class="page hidden">
+      <header class="page-head">
+        <div>
+          <h2>Emploi du temps</h2>
+          <p class="page-sub">Planning hebdomadaire — tes activités récurrentes, sans dates.</p>
+        </div>
+        <div class="tt-actions">
+          <button id="tt-edit" class="btn-ghost" type="button" hidden>Modifier</button>
+        </div>
+      </header>
+
+      <div id="tt-empty" class="tt-empty hidden">
+        <p>Tu n'as pas encore d'emploi du temps.</p>
+        <button id="tt-create" class="btn-primary" type="button">Créer un emploi du temps</button>
+      </div>
+
+      <p id="tt-hint" class="tt-hint hidden">✏️ Mode modification : clique sur un jour (ou sur « ＋ ») pour ajouter une activité.</p>
+
+      <div id="tt-grid" class="tt-grid hidden">
+        <div class="tt-head" id="tt-head"></div>
+        <div class="tt-scroll"><div class="tt-board" id="tt-board"></div></div>
+      </div>
+    </section>
+
     <!-- To-Do List -->
     <section id="page-todos" class="page hidden">
       <header class="page-head">
@@ -143,8 +173,8 @@
         <div class="todo-add-row">
           <input id="todo-input" type="text" placeholder="Ajouter une tâche…">
           <select id="todo-priority">
-            <option value="medium">Moyenne</option>
             <option value="high">Haute</option>
+            <option value="medium">Moyenne</option>
             <option value="low">Basse</option>
           </select>
           <button id="todo-add" class="btn-primary" type="button">Ajouter</button>
@@ -183,6 +213,16 @@
       <button id="modal-cancel" class="btn-ghost" type="button">Annuler</button>
       <button id="modal-save" class="btn-primary" type="button">Enregistrer</button>
     </div>
+  </div>
+</div>
+
+<!-- ===== Modale activité (emploi du temps) ===== -->
+<div class="modal-overlay" id="modal-tt">
+  <div class="modal">
+    <button class="modal-x" id="ttm-close" type="button" title="Fermer">✕</button>
+    <h2 id="ttm-title">Activité</h2>
+    <div id="ttm-body"></div>
+    <div class="modal-footer" id="ttm-footer"></div>
   </div>
 </div>
 

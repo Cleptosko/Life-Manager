@@ -18,6 +18,8 @@ if (CONFIGURED && window.supabase && window.supabase.createClient) {
 let session = null;
 let events = [];
 let todos = [];
+let ttActivities = [];       // activités récurrentes de l'emploi du temps
+let ttCancellations = [];    // annulations ponctuelles (par semaine)
 
 /* ===================== Utilitaires ===================== */
 const $ = (sel) => document.querySelector(sel);
@@ -39,6 +41,7 @@ function startOfWeek(d) { const r = new Date(d); r.setDate(r.getDate() - ((r.get
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 
 const DAYS_SHORT = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+const DAYS_FULL = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
 function fmtDateLong(d) {
@@ -50,6 +53,7 @@ function fmtDateShort(d) {
 function fmtTime(d) {
   return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
+function fmtTTime(t) { return String(t || "").slice(0, 5); }
 function isoWeek(d) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = date.getUTCDay() || 7;
@@ -60,11 +64,38 @@ function isoWeek(d) {
 function eventDayKey(e) { return dayKey(new Date(e.start_at)); }
 function eventTime(e) { return fmtTime(new Date(e.start_at)); }
 
+/* ===================== Agenda / Emploi du temps (helpers) ===================== */
+function isPastEvent(e) { return eventDayKey(e) < dayKey(new Date()); }
+function visibleEvents() { return events.filter((e) => !isPastEvent(e)); }
+
+function ttDayIndex() { return (new Date().getDay() + 6) % 7; } // 0 = Lundi
+function currentWeekStartKey() { return dayKey(startOfWeek(new Date())); }
+function ttMinutes(t) {
+  const p = String(t || "08:00").split(":");
+  return (Number(p[0]) || 0) * 60 + (Number(p[1]) || 0);
+}
+function ttCancelledIds() {
+  const wk = currentWeekStartKey();
+  const set = new Set();
+  for (const c of ttCancellations) {
+    if (String(c.week_start).slice(0, 10) === wk) set.add(c.activity_id);
+  }
+  return set;
+}
+function activeTimetableForDay(dayIndex) {
+  const cancelled = ttCancelledIds();
+  return ttActivities
+    .filter((a) => a.day_of_week === dayIndex && !cancelled.has(a.id))
+    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+}
+
 /* ===================== Backend (Supabase ou démo) ===================== */
 const LS_USERS = "lm_users";
 const LS_SESSION = "lm_session";
 const LS_EVENTS = "lm_events";
 const LS_TODOS = "lm_todos";
+const LS_TT = "lm_tt_activities";
+const LS_TTC = "lm_tt_cancellations";
 
 function lsGet(k, fallback) {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
@@ -141,7 +172,7 @@ const Backend = {
     return null;
   },
 
-  /* ---------- Événements ---------- */
+  /* ---------- Agenda (événements datés) ---------- */
   async loadEvents() {
     if (DEMO) { events = lsGet(LS_EVENTS + "_" + session.userId, []); return events; }
     const { data, error } = await supabaseClient.from("events").select("*").eq("user_id", session.userId);
@@ -208,6 +239,97 @@ const Backend = {
     const { error } = await supabaseClient.from("todos").delete().eq("id", id);
     if (error) throw new Error(error.message);
   },
+
+  /* ---------- Emploi du temps (activités récurrentes) ---------- */
+  async loadTimetable() {
+    if (DEMO) {
+      ttActivities = lsGet(LS_TT + "_" + session.userId, []);
+      ttCancellations = lsGet(LS_TTC + "_" + session.userId, []);
+      return { activities: ttActivities, cancellations: ttCancellations };
+    }
+    try {
+      const [aRes, cRes] = await Promise.all([
+        supabaseClient.from("timetable_activities").select("*").eq("user_id", session.userId),
+        supabaseClient.from("timetable_cancellations").select("*"),
+      ]);
+      if (aRes.error) throw new Error(aRes.error.message);
+      if (cRes.error) throw new Error(cRes.error.message);
+      ttActivities = aRes.data || [];
+      ttCancellations = cRes.data || [];
+      return { activities: ttActivities, cancellations: ttCancellations };
+    } catch (err) {
+      // Tables pas encore créées : on ne bloque pas l'accès à l'app.
+      if (/could not find the table|does not exist/i.test(String(err.message))) {
+        ttActivities = [];
+        ttCancellations = [];
+        return { activities: [], cancellations: [] };
+      }
+      throw err;
+    }
+  },
+
+  async saveTimetableActivity(a) {
+    if (DEMO) {
+      if (a.id) { const i = ttActivities.findIndex((x) => x.id === a.id); if (i >= 0) ttActivities[i] = a; else ttActivities.push(a); }
+      else { a.id = "ta_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); ttActivities.push(a); }
+      lsSet(LS_TT + "_" + session.userId, ttActivities);
+      return a;
+    }
+    const row = {
+      title: a.title,
+      description: a.description || "",
+      day_of_week: a.day_of_week,
+      start_time: a.start_time,
+      end_time: a.end_time,
+    };
+    if (a.id) {
+      const { data, error } = await supabaseClient.from("timetable_activities").update(row).eq("id", a.id).select().single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+    const { data, error } = await supabaseClient.from("timetable_activities")
+      .insert({ ...row, user_id: session.userId }).select().single();
+    if (error) throw new Error(error.message);
+    return data;
+  },
+
+  async deleteTimetableActivity(id) {
+    if (DEMO) {
+      ttActivities = ttActivities.filter((a) => a.id !== id);
+      ttCancellations = ttCancellations.filter((c) => c.activity_id !== id);
+      lsSet(LS_TT + "_" + session.userId, ttActivities);
+      lsSet(LS_TTC + "_" + session.userId, ttCancellations);
+      return;
+    }
+    const { error } = await supabaseClient.from("timetable_activities").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+
+  async cancelActivityForWeek(activityId) {
+    const weekStart = currentWeekStartKey();
+    if (DEMO) {
+      if (!ttCancellations.some((c) => c.activity_id === activityId && c.week_start === weekStart)) {
+        ttCancellations.push({ activity_id: activityId, week_start: weekStart });
+        lsSet(LS_TTC + "_" + session.userId, ttCancellations);
+      }
+      return;
+    }
+    const { error } = await supabaseClient.from("timetable_cancellations")
+      .upsert({ activity_id: activityId, week_start: weekStart }, { onConflict: "activity_id,week_start" });
+    if (error) throw new Error(error.message);
+  },
+
+  async reactivateActivity(activityId) {
+    const weekStart = currentWeekStartKey();
+    if (DEMO) {
+      ttCancellations = ttCancellations.filter((c) => !(c.activity_id === activityId && c.week_start === weekStart));
+      lsSet(LS_TTC + "_" + session.userId, ttCancellations);
+      return;
+    }
+    const { error } = await supabaseClient.from("timetable_cancellations")
+      .delete().eq("activity_id", activityId).eq("week_start", weekStart);
+    if (error) throw new Error(error.message);
+  },
 };
 
 /* ===================== Authentification (UI) ===================== */
@@ -270,6 +392,7 @@ async function handleAuthSubmit(e) {
 async function enterApp() {
   await Backend.loadEvents();
   await Backend.loadTodos();
+  await Backend.loadTimetable();
   $("#view-auth").classList.add("hidden");
   $("#view-app").classList.remove("hidden");
   $("#sidebar-username").textContent = session.username;
@@ -285,7 +408,7 @@ function showAuth() {
 }
 
 /* ===================== Navigation ===================== */
-const PAGES = ["dashboard", "schedule", "todos"];
+const PAGES = ["dashboard", "schedule", "timetable", "todos"];
 
 function navigate(page) {
   PAGES.forEach((p) => {
@@ -294,6 +417,7 @@ function navigate(page) {
   });
   if (page === "dashboard") renderDashboard();
   if (page === "schedule") renderSchedule();
+  if (page === "timetable") renderTimetable();
   if (page === "todos") renderTodos();
 }
 
@@ -307,10 +431,12 @@ function renderDashboard() {
   const todayKey = dayKey(now);
   const todayEvents = events.filter((e) => eventDayKey(e) === todayKey)
     .sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
-  const pendingTodos = todos.filter((t) => !t.done);
+  const pendingTodos = sortTodos(todos.filter((t) => !t.done));
+  const ttToday = activeTimetableForDay(ttDayIndex());
 
   $("#dash-event-today").textContent = todayEvents.length;
   $("#dash-todo-pending").textContent = pendingTodos.length;
+  $("#dash-course-today").textContent = ttToday.length;
 
   const upcoming = events.filter((e) => new Date(e.start_at) >= now)
     .sort((a, b) => (a.start_at < b.start_at ? -1 : 1))[0];
@@ -318,12 +444,20 @@ function renderDashboard() {
     ? (upcoming.title + " · " + fmtDateShort(new Date(upcoming.start_at)) + (upcoming.all_day ? "" : " · " + eventTime(upcoming)))
     : "Aucun événement à venir";
 
-  $("#dash-today-list").innerHTML = todayEvents.length
+  const eventHtml = todayEvents.length
     ? todayEvents.map((ev) =>
         '<div class="dash-event"><span class="time">' + (ev.all_day ? "Journée" : eventTime(ev)) + '</span>' +
         '<span class="title">' + esc(ev.title) + '</span></div>'
       ).join("")
-    : "<p class='empty'>Rien de prévu aujourd'hui 🎉</p>";
+    : "";
+  const courseHtml = ttToday.length
+    ? ttToday.map((a) =>
+        '<div class="dash-event"><span class="time">' + fmtTTime(a.start_time) + '</span>' +
+        '<span class="title">🏫 ' + esc(a.title) + '</span></div>'
+      ).join("")
+    : "";
+  $("#dash-today-list").innerHTML = (eventHtml + courseHtml) ||
+    "<p class='empty'>Rien de prévu aujourd'hui 🎉</p>";
 
   $("#dash-todos-list").innerHTML = pendingTodos.length
     ? '<ul class="dash-todo">' + pendingTodos.slice(0, 5).map((t) => '<li>' + esc(t.title) + '</li>').join("") + '</ul>'
@@ -335,7 +469,7 @@ function updateClock() {
   $("#dash-clock").textContent = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
-/* ===================== Emploi du temps ===================== */
+/* ===================== Agenda (événements datés) ===================== */
 const cal = { view: "month", cursor: new Date() };
 let modalEventId = null;
 
@@ -393,13 +527,14 @@ function renderMonth(c) {
   const first = startOfMonth(cal.cursor);
   let d = startOfWeek(first);
   const today = dayKey(new Date());
+  const vis = visibleEvents();
   let html = '<div class="cal-grid">' +
     DAYS_SHORT.map((x) => '<div class="cal-dow">' + x + '</div>').join("");
 
   for (let i = 0; i < 42; i++) {
     const key = dayKey(d);
     const inMonth = d.getMonth() === cal.cursor.getMonth();
-    const dayEvents = sortEvents(events.filter((e) => eventDayKey(e) === key));
+    const dayEvents = sortEvents(vis.filter((e) => eventDayKey(e) === key));
     const chips = dayEvents.slice(0, 3).map((ev) =>
       '<span class="chip' + (ev.all_day ? ' allday' : '') + '">' + esc(ev.title) + '</span>').join("");
     const more = dayEvents.length > 3 ? '<span class="more">+' + (dayEvents.length - 3) + '</span>' : "";
@@ -416,11 +551,12 @@ function renderMonth(c) {
 function renderWeek(c) {
   const start = startOfWeek(cal.cursor);
   const today = dayKey(new Date());
+  const vis = visibleEvents();
   let html = '<div class="cal-week">';
   for (let i = 0; i < 7; i++) {
     const d = addDays(start, i);
     const key = dayKey(d);
-    const dayEvents = sortEvents(events.filter((e) => eventDayKey(e) === key));
+    const dayEvents = sortEvents(vis.filter((e) => eventDayKey(e) === key));
     html += '<div class="week-day' + (key === today ? " today" : "") + '" data-key="' + key + '">' +
       '<div class="week-head"><span class="wdow">' + DAYS_SHORT[i] + '</span>' +
       '<span class="wdnum">' + d.getDate() + '</span></div>' +
@@ -433,7 +569,8 @@ function renderWeek(c) {
 
 function renderDay(c) {
   const key = dayKey(cal.cursor);
-  const dayEvents = sortEvents(events.filter((e) => eventDayKey(e) === key));
+  const vis = visibleEvents();
+  const dayEvents = sortEvents(vis.filter((e) => eventDayKey(e) === key));
   const allDay = dayEvents.filter((e) => e.all_day);
   const timed = dayEvents.filter((e) => !e.all_day);
 
@@ -453,24 +590,25 @@ function renderDay(c) {
 
 function renderYear(c) {
   const year = cal.cursor.getFullYear();
+  const vis = visibleEvents();
   let html = '<div class="year-grid">';
   for (let m = 0; m < 12; m++) {
     const first = new Date(year, m, 1);
-    const count = events.filter((e) => {
+    const count = vis.filter((e) => {
       const dt = new Date(e.start_at);
       return dt.getFullYear() === year && dt.getMonth() === m;
     }).length;
     html += '<div class="year-month" data-month="' + m + '">' +
       '<div class="ym-head">' + MONTHS[m] + '</div>' +
-      '<div class="ym-grid">' + DAYS_SHORT.map((x) => '<span class="ym-dow">' + x[0] + '</span>').join("") + renderYearDays(first) + '</div>' +
+      '<div class="ym-grid">' + DAYS_SHORT.map((x) => '<span class="ym-dow">' + x[0] + '</span>').join("") + renderYearDays(first, vis) + '</div>' +
       '<div class="ym-count">' + count + ' événement(s)</div></div>';
   }
   html += '</div>';
   c.innerHTML = html;
 }
 
-function renderYearDays(first) {
-  const keys = new Set(events.map(eventDayKey));
+function renderYearDays(first, vis) {
+  const keys = new Set(vis.map(eventDayKey));
   let d = startOfWeek(first);
   let html = "";
   for (let i = 0; i < 42; i++) {
@@ -482,7 +620,7 @@ function renderYearDays(first) {
   return html;
 }
 
-/* ===================== Modale événement ===================== */
+/* ===================== Modale événement (Agenda) ===================== */
 function openModal() { $("#modal").classList.add("open"); }
 function closeModal() { $("#modal").classList.remove("open"); modalEventId = null; }
 
@@ -544,16 +682,192 @@ async function deleteEventFromModal() {
   }
 }
 
+/* ===================== Emploi du temps (hebdomadaire) ===================== */
+const TT_START = 7;   // 07:00
+const TT_END = 20;    // 20:00
+const TT_HOUR_H = 60; // pixels par heure
+const TT_BOARD_H = (TT_END - TT_START) * TT_HOUR_H;
+
+let ttEditMode = false;
+let ttModalMode = null;       // "add" | "edit" | "view"
+let ttModalActivityId = null;
+let ttPendingDay = 0;
+
+function renderTimetable() {
+  renderTTHead();
+  const grid = $("#tt-grid");
+  const emptyEl = $("#tt-empty");
+  const editBtn = $("#tt-edit");
+  const hint = $("#tt-hint");
+
+  if (ttActivities.length === 0 && !ttEditMode) {
+    grid.classList.add("hidden");
+    emptyEl.classList.remove("hidden");
+    editBtn.hidden = true;
+    hint.classList.add("hidden");
+    grid.classList.remove("editing");
+    return;
+  }
+
+  grid.classList.remove("hidden");
+  emptyEl.classList.add("hidden");
+  editBtn.hidden = false;
+  editBtn.textContent = ttEditMode ? "Terminer" : "Modifier";
+  hint.classList.toggle("hidden", !ttEditMode);
+  grid.classList.toggle("editing", ttEditMode);
+
+  const cancelled = ttCancelledIds();
+  const board = $("#tt-board");
+  board.style.height = TT_BOARD_H + "px";
+  let html = "";
+
+  for (let h = TT_START; h <= TT_END; h++) {
+    const top = (h - TT_START) * TT_HOUR_H;
+    html += '<div class="tt-hour-label" style="top:' + top + 'px">' + pad(h) + ':00</div>';
+    html += '<div class="tt-hline" style="top:' + top + 'px"></div>';
+  }
+  for (let d = 0; d < 7; d++) {
+    html += '<div class="tt-col clickable' + (d === ttDayIndex() ? ' today' : '') + '" data-day="' + d + '" style="--day:' + d + '"></div>';
+  }
+
+  const all = ttActivities.slice().sort((a, b) => {
+    if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week;
+    return String(a.start_time).localeCompare(String(b.start_time));
+  });
+  for (const a of all) {
+    const isCancelled = cancelled.has(a.id);
+    const pos = ttPosition(a.start_time, a.end_time);
+    html += '<button class="tt-activity' + (isCancelled ? ' cancelled' : '') + '" data-id="' + a.id + '" style="--day:' + a.day_of_week + ';top:' + pos.top + 'px;height:' + pos.height + 'px">' +
+      '<span class="tt-act-time">' + fmtTTime(a.start_time) + '</span>' +
+      '<span class="tt-act-title">' + esc(a.title) + '</span>' +
+      '</button>';
+  }
+  board.innerHTML = html;
+}
+
+function renderTTHead() {
+  const today = ttDayIndex();
+  let html = '<div class="tt-corner"></div>';
+  for (let d = 0; d < 7; d++) {
+    html += '<div class="tt-day' + (d === today ? ' today' : '') + '">' + DAYS_SHORT[d] +
+      '<button class="tt-day-add" data-day="' + d + '" title="Ajouter">＋</button></div>';
+  }
+  $("#tt-head").innerHTML = html;
+}
+
+function ttPosition(start, end) {
+  const s = ttMinutes(start);
+  const e = Math.max(ttMinutes(end), s + 30);
+  const top = Math.max(0, ((s - TT_START * 60) / 60) * TT_HOUR_H);
+  const height = Math.max(26, Math.min(((e - s) / 60) * TT_HOUR_H, TT_BOARD_H - top));
+  return { top: Math.round(top), height: Math.round(height) };
+}
+
+function openTTAdd(dayIndex) {
+  ttPendingDay = (dayIndex == null) ? ttDayIndex() : dayIndex;
+  openTTActivity(null, "add");
+}
+
+function openTTActivity(activityId, mode) {
+  ttModalMode = mode;
+  ttModalActivityId = activityId || null;
+  renderTTModal();
+  $("#modal-tt").classList.add("open");
+}
+
+function closeTTModal() {
+  $("#modal-tt").classList.remove("open");
+  ttModalMode = null;
+  ttModalActivityId = null;
+}
+
+function renderTTModal() {
+  const a = ttActivities.find((x) => x.id === ttModalActivityId) || null;
+  const titleEl = $("#ttm-title");
+  const body = $("#ttm-body");
+  const footer = $("#ttm-footer");
+
+  if (ttModalMode === "view" && a) {
+    const cancelled = ttCancelledIds().has(a.id);
+    titleEl.textContent = a.title;
+    body.innerHTML =
+      '<p class="tt-view-meta">' + DAYS_FULL[a.day_of_week] + ' · ' + fmtTTime(a.start_time) + ' – ' + fmtTTime(a.end_time) + '</p>' +
+      (cancelled ? '<p><span class="tt-view-badge">Annulée cette semaine</span></p>' : '') +
+      '<div class="tt-view-desc" id="tt-desc" style="display:none">' +
+        (a.description ? '<p>' + esc(a.description) + '</p>' : '<p class="tt-desc-empty">Aucune description.</p>') +
+      '</div>';
+    footer.innerHTML =
+      '<button class="btn-ghost" data-act="toggle-desc">Voir la description</button>' +
+      '<span class="spacer"></span>' +
+      '<button class="btn-ghost" data-act="edit">Modifier</button>' +
+      '<button class="btn-danger" data-act="cancel">' + (cancelled ? 'Réactiver' : 'Annuler pour la semaine') + '</button>';
+    return;
+  }
+
+  const isEdit = ttModalMode === "edit" && a;
+  titleEl.textContent = isEdit ? "Modifier l'activité" : "Nouvelle activité";
+  const daySel = isEdit ? a.day_of_week : ttPendingDay;
+  body.innerHTML =
+    '<label class="field"><span>Titre court</span><input id="tta-title" type="text" placeholder="Ex : Maths" value="' + esc(isEdit ? a.title : "") + '"></label>' +
+    '<label class="field"><span>Description</span><textarea id="tta-desc" rows="3" placeholder="Détails, salle, professeur…">' + esc(isEdit ? (a.description || "") : "") + '</textarea></label>' +
+    '<label class="field"><span>Jour</span><select id="tta-day">' +
+      DAYS_FULL.map((d, i) => '<option value="' + i + '"' + (daySel === i ? ' selected' : '') + '>' + d + '</option>').join("") +
+    '</select></label>' +
+    '<div class="row">' +
+      '<label class="field"><span>Début</span><input id="tta-start" type="time" value="' + (isEdit ? fmtTTime(a.start_time) : "08:00") + '"></label>' +
+      '<label class="field"><span>Fin</span><input id="tta-end" type="time" value="' + (isEdit ? fmtTTime(a.end_time) : "09:00") + '"></label>' +
+    '</div>';
+  footer.innerHTML =
+    (isEdit ? '<button class="btn-danger" data-act="del">Supprimer</button>' : '') +
+    '<span class="spacer"></span>' +
+    '<button class="btn-ghost" data-act="close">Annuler</button>' +
+    '<button class="btn-primary" data-act="save">Enregistrer</button>';
+  if (!isEdit) setTimeout(() => $("#tta-title").focus(), 60);
+}
+
+async function saveTTActivityFromModal() {
+  const title = $("#tta-title").value.trim();
+  if (!title) { $("#tta-title").focus(); return; }
+  const start = $("#tta-start").value;
+  const end = $("#tta-end").value;
+  if (!start || !end) { alert("Indique une heure de début et de fin."); return; }
+  if (ttMinutes(end) <= ttMinutes(start)) { alert("L'heure de fin doit être après l'heure de début."); return; }
+  await Backend.saveTimetableActivity({
+    id: ttModalActivityId,
+    title,
+    description: $("#tta-desc").value.trim(),
+    day_of_week: Number($("#tta-day").value),
+    start_time: start,
+    end_time: end,
+  });
+  await Backend.loadTimetable();
+  closeTTModal();
+  renderTimetable();
+  renderDashboard();
+}
+
 /* ===================== To-Do ===================== */
 let todoFilter = "all";
 
 const PRIO_LABEL = { high: "Haute", medium: "Moyenne", low: "Basse" };
 const PRIO_ORDER = ["low", "medium", "high"];
+const PRIO_RANK = { high: 0, medium: 1, low: 2 };
+
+function sortTodos(list) {
+  return list.slice().sort((a, b) => {
+    if ((a.done ? 1 : 0) !== (b.done ? 1 : 0)) return a.done ? 1 : -1;
+    const ra = PRIO_RANK[a.priority] ?? 1;
+    const rb = PRIO_RANK[b.priority] ?? 1;
+    if (ra !== rb) return ra - rb;
+    return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+  });
+}
 
 function renderTodos() {
-  const list = todos.filter((t) =>
+  const filtered = todos.filter((t) =>
     todoFilter === "all" ? true : (todoFilter === "done" ? t.done : !t.done)
   );
+  const list = sortTodos(filtered);
   $("#todo-list").innerHTML = list.length
     ? list.map(todoItem).join("")
     : '<p class="empty">' + (todoFilter === "done" ? "Aucune tâche terminée" : todoFilter === "active" ? "Aucune tâche en cours 🎉" : "Aucune tâche") + '</p>';
@@ -566,10 +880,10 @@ function renderTodos() {
 
 function todoItem(t) {
   const prio = t.priority || "medium";
-  return '<li class="todo' + (t.done ? " done" : "") + '" data-id="' + t.id + '">' +
+  return '<li class="todo todo-p-' + prio + (t.done ? " done" : "") + '" data-id="' + t.id + '">' +
     '<button class="todo-check" data-act="toggle" title="Terminer">' + (t.done ? "✓" : "") + '</button>' +
     '<span class="todo-title">' + esc(t.title) + '</span>' +
-    '<button class="prio prio-' + prio + '" data-act="prio" title="Changer la priorité">' + PRIO_LABEL[prio] + '</button>' +
+    '<button class="prio prio-' + prio + '" data-act="prio" title="Priorité : ' + PRIO_LABEL[prio] + ' — cliquer pour changer">' + PRIO_LABEL[prio] + '</button>' +
     '<button class="todo-del" data-act="del" title="Supprimer">🗑</button>' +
     '</li>';
 }
@@ -623,6 +937,7 @@ $("#auth-form").addEventListener("submit", handleAuthSubmit);
 
 $("#nav-dashboard").addEventListener("click", () => navigate("dashboard"));
 $("#nav-schedule").addEventListener("click", () => navigate("schedule"));
+$("#nav-timetable").addEventListener("click", () => navigate("timetable"));
 $("#nav-todos").addEventListener("click", () => navigate("todos"));
 $("#btn-logout").addEventListener("click", async () => {
   await Backend.signOut();
@@ -656,6 +971,64 @@ $("#modal-delete").addEventListener("click", deleteEventFromModal);
 $("#modal-cancel").addEventListener("click", closeModal);
 $("#modal").addEventListener("click", (e) => { if (!e.target.closest(".modal")) closeModal(); });
 
+/* Emploi du temps */
+$("#tt-create").addEventListener("click", () => { ttEditMode = true; renderTimetable(); });
+$("#tt-edit").addEventListener("click", () => { ttEditMode = !ttEditMode; renderTimetable(); });
+$("#tt-head").addEventListener("click", (e) => {
+  const b = e.target.closest(".tt-day-add");
+  if (b) openTTAdd(Number(b.dataset.day));
+});
+$("#tt-board").addEventListener("click", (e) => {
+  const act = e.target.closest(".tt-activity");
+  if (act) {
+    const id = act.dataset.id;
+    if (ttEditMode) openTTActivity(id, "edit");
+    else openTTActivity(id, "view");
+    return;
+  }
+  const col = e.target.closest(".tt-col");
+  if (col && ttEditMode) openTTAdd(Number(col.dataset.day));
+});
+$("#ttm-close").addEventListener("click", closeTTModal);
+$("#ttm-footer").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-act]");
+  if (!btn) return;
+  const act = btn.dataset.act;
+  const a = ttActivities.find((x) => x.id === ttModalActivityId) || null;
+  try {
+    if (act === "close") {
+      closeTTModal();
+    } else if (act === "toggle-desc") {
+      const d = $("#tt-desc");
+      const hidden = d.style.display === "none";
+      d.style.display = hidden ? "block" : "none";
+      btn.textContent = hidden ? "Masquer la description" : "Voir la description";
+    } else if (act === "edit") {
+      if (a) openTTActivity(a.id, "edit");
+    } else if (act === "cancel") {
+      if (!a) return;
+      const cancelled = ttCancelledIds().has(a.id);
+      if (cancelled) await Backend.reactivateActivity(a.id);
+      else await Backend.cancelActivityForWeek(a.id);
+      await Backend.loadTimetable();
+      renderTimetable();
+      openTTActivity(a.id, "view");
+    } else if (act === "save") {
+      await saveTTActivityFromModal();
+    } else if (act === "del") {
+      if (!a) return;
+      await Backend.deleteTimetableActivity(a.id);
+      await Backend.loadTimetable();
+      closeTTModal();
+      renderTimetable();
+      renderDashboard();
+    }
+  } catch (err) {
+    alert(err.message || "Une erreur est survenue.");
+  }
+});
+$("#modal-tt").addEventListener("click", (e) => { if (!e.target.closest(".modal")) closeTTModal(); });
+
 $("#todo-add").addEventListener("click", addTodo);
 $("#todo-input").addEventListener("keydown", (e) => { if (e.key === "Enter") addTodo(); });
 $("#todo-list").addEventListener("click", handleTodoListClick);
@@ -666,7 +1039,10 @@ $$(".tf").forEach((b) => b.addEventListener("click", () => {
 }));
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && $("#modal").classList.contains("open")) closeModal();
+  if (e.key === "Escape") {
+    if ($("#modal-tt").classList.contains("open")) closeTTModal();
+    else if ($("#modal").classList.contains("open")) closeModal();
+  }
 });
 
 /* ===================== Init ===================== */
