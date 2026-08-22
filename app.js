@@ -725,7 +725,7 @@ async function deleteEventFromModal() {
 /* ===================== Emploi du temps (hebdomadaire) ===================== */
 const TT_START = 7;    // 07:00
 const TT_END = 22;     // 22:00
-const SLOT_H30 = 44;   // hauteur (px) d'un créneau de 30 min
+const SLOT_H30 = 22;   // hauteur (px) d'un créneau de 30 min
 const TT_MAX_PER_CELL = 3;
 
 let ttEditMode = false;
@@ -782,7 +782,7 @@ function renderTTHead() {
   $("#tt-head").innerHTML = html;
 }
 
-/* Placement des activités d'une journée : colonnes côte à côte, 3 max par créneau */
+/* Placement des activités d'une journée : colonnes dynamiques, 3 max par créneau */
 function layoutDay(dayIndex, extraAct, exceptId) {
   const cancelled = ttCancelledIds();
   const acts = ttActivities
@@ -807,13 +807,20 @@ function layoutDay(dayIndex, extraAct, exceptId) {
     res.push({ act: a, s, e, col, cancelled: cancelled.has(a.id) });
   }
   for (const L of res) {
-    const cols = new Set(placed.filter((p) => p.s < L.e && L.s < p.e).map((p) => p.col)).size;
-    const m = Math.max(1, cols);
+    const m = Math.max(1, new Set(placed.filter((p) => p.s < L.e && L.s < p.e).map((p) => p.col)).size);
     L.cf = L.col / m;
     L.wf = 1 / m;
     L.dur = Math.max(1, L.e - L.s);
   }
   return { items: res, overflow };
+}
+
+function ttSubslotsHtml(dayIndex, slotIndex) {
+  let h = "";
+  for (let c = 0; c < TT_MAX_PER_CELL; c++) {
+    h += '<div class="tt-subslot" data-day="' + dayIndex + '" data-slot="' + slotIndex + '" data-col="' + c + '"></div>';
+  }
+  return h;
 }
 
 function renderTTBoard() {
@@ -829,27 +836,29 @@ function renderTTBoard() {
 
   let html = "";
   for (let i = 0; i < n; i++) {
-    html += '<div class="tt-hour-label" style="grid-row:' + (i + 1) + ";grid-column:1\">" +
-      ttMinsToTime(TT_START * 60 + i * slotMin) + "</div>";
+    html += '<div class="tt-hour-label" style="grid-row:' + (i + 1) + ';grid-column:1">' +
+      ttMinsToTime(TT_START * 60 + i * slotMin) + '</div>';
   }
   for (let i = 0; i < n; i++) {
     for (let d = 0; d < 7; d++) {
       html += '<div class="tt-cell' + (d === today ? " today" : "") + '"' +
-        " style=\"grid-row:" + (i + 1) + ";grid-column:" + (d + 2) + '\"' +
-        ' data-day="' + d + '" data-slot="' + i + '"></div>';
+        ' style="grid-row:' + (i + 1) + ';grid-column:' + (d + 2) + '"' +
+        ' data-day="' + d + '" data-slot="' + i + '">' +
+        (ttEditMode ? ttSubslotsHtml(d, i) : "") +
+        '</div>';
     }
   }
   for (let d = 0; d < 7; d++) {
     const laid = layoutDay(d);
     for (const L of laid.items) {
       const a = L.act;
-      html += '<button class="tt-activity c' + activityColorIndex(a) + (L.cancelled ? " cancelled" : "") + '"' +
-        " style=\"top:" + (L.s * rowH) + "px;height:" + (L.dur * rowH - 2) + "px;" +
-        "--d:" + d + ";--cf:" + L.cf + ";--wf:" + L.wf + '\"' +
+      html += '<button class="tt-activity c' + activityColorIndex(a) + (L.cancelled ? " cancelled" : "") + (L.wf < 0.45 ? " crowded" : "") + '"' +
+        ' style="top:' + (L.s * rowH) + 'px;height:' + (L.dur * rowH - 2) + 'px;' +
+        '--d:' + d + ';--cf:' + L.cf + ';--wf:' + L.wf + '"' +
         ' data-id="' + a.id + '">' +
-        '<span class="tt-act-time">' + fmtTTime(a.start_time) + "</span>" +
-        '<span class="tt-act-title">' + esc(a.title) + "</span>" +
-        "</button>";
+        '<span class="tt-act-time">' + fmtTTime(a.start_time) + '</span>' +
+        '<span class="tt-act-title">' + esc(a.title) + '</span>' +
+        '</button>';
     }
   }
   board.innerHTML = html;
@@ -1169,6 +1178,11 @@ $("#tt-slot").addEventListener("change", async () => {
   }
 });
 $("#tt-board").addEventListener("click", (e) => {
+  const sub = e.target.closest(".tt-subslot");
+  if (sub && ttEditMode) {
+    openTTAdd(Number(sub.dataset.day), Number(sub.dataset.slot));
+    return;
+  }
   const act = e.target.closest(".tt-activity");
   if (act) {
     const id = act.dataset.id;
