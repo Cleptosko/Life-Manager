@@ -1283,7 +1283,7 @@ async function fetchWeather(force) {
     "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,uv_index" +
     "&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,uv_index" +
     "&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,uv_index_max,wind_speed_10m_max,wind_direction_10m_dominant" +
-    "&timezone=auto&forecast_days=7&forecast_hours=24";
+    "&timezone=auto&forecast_days=9&forecast_hours=24";
   const archiveUrl = archiveEnd >= monthStart
     ? "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat.toFixed(4) + "&longitude=" + lon.toFixed(4) +
       "&start_date=" + monthStart + "&end_date=" + archiveEnd +
@@ -1453,7 +1453,7 @@ function renderWeatherPage() {
   locEl.textContent = weatherCache.city || (weatherCache.lat.toFixed(2) + ", " + weatherCache.lon.toFixed(2));
   const d = weatherCache.daily;
   let html = "";
-  for (let i = 0; i < Math.min(7, d.time.length); i++) {
+  for (let i = 0; i < Math.min(9, d.time.length); i++) {
     const date = new Date(d.time[i] + "T12:00:00");
     const dayName = i === 0 ? "Aujourd'hui" : (i === 1 ? "Demain" : DAYS_FULL[(date.getDay() + 6) % 7]);
     const code = d.weather_code[i];
