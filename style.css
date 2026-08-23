@@ -758,3 +758,69 @@ html[data-theme="light"] body[data-accent="cyan"] {
   .weather-search-wrap { width: 100%; }
   .weather-city-input { min-width: 0; flex: 1; }
 }
+
+/* =========== Export PDF (Emploi du temps) =========== */
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  nav, .page-head, .tt-actions, .tt-banner, .tt-empty, #tt-slot,
+  .theme-toggle, #modal-overlay, .tt-subslot,
+  body > :not(#page-timetable) {
+    display: none !important;
+  }
+  #page-timetable { display: block !important; margin: 0; padding: 10px; }
+  #page-timetable::before {
+    content: "Emploi du temps — Life Manager";
+    display: block; font-size: 1.4rem; font-weight: 800;
+    margin-bottom: 14px; text-align: center; color: #000;
+  }
+  .tt-grid {
+    border: 1px solid #000 !important; border-radius: 0 !important;
+    background: #fff !important; overflow: visible !important;
+  }
+  .tt-head {
+    background: #f5f5f5 !important; border-bottom: 1px solid #000 !important;
+    min-width: auto !important;
+  }
+  .tt-day {
+    color: #000 !important; border-right: 1px solid #000 !important;
+    padding: 8px 4px !important; font-size: 0.75rem !important;
+  }
+  .tt-day.today { color: #000 !important; background: #eee !important; }
+  .tt-corner { border-right: 1px solid #000 !important; }
+  .tt-scroll { overflow: visible !important; }
+  .tt-board {
+    min-width: auto !important;
+    grid-template-columns: 50px repeat(7, 1fr) !important;
+  }
+  .tt-hour-label {
+    border-right: 1px solid #000 !important;
+    border-bottom: 1px solid #ccc !important;
+    padding: 1px 6px 0 0 !important;
+    font-size: 0.6rem !important; color: #333 !important;
+  }
+  .tt-cell {
+    border-right: 1px solid #ccc !important;
+    border-bottom: 1px solid #ccc !important;
+    background: #fff !important;
+  }
+  .tt-cell.today { background: #fafafa !important; }
+  .tt-activity {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    font-size: 0.62rem !important; font-weight: 700 !important;
+    border: 1px solid #333 !important;
+  }
+  .tt-activity.c1 { background: #d4fcdc !important; color: #0a4 !important; }
+  .tt-activity.c2 { background: #d4e0fc !important; color: #24a !important; }
+  .tt-activity.c3 { background: #fcd4f0 !important; color: #a04 !important; }
+  .tt-activity.c4 { background: #fcf0d4 !important; color: #a80 !important; }
+  .tt-activity.c5 { background: #d4fcf8 !important; color: #088 !important; }
+  .tt-activity.c6 { background: #fce0d4 !important; color: #a40 !important; }
+  .tt-activity.cancelled {
+    background: #f0f0f0 !important; color: #999 !important;
+    border-color: #ccc !important;
+  }
+  .tt-activity .tt-act-time { font-size: 0.55rem !important; }
+  .tt-activity .tt-act-title { font-size: 0.6rem !important; }
+  @page { margin: 10mm; size: landscape; }
+}

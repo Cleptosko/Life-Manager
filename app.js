@@ -794,12 +794,14 @@ function renderTimetable() {
   const grid = $("#tt-grid");
   const emptyEl = $("#tt-empty");
   const editBtn = $("#tt-edit");
+  const exportBtn = $("#tt-export");
   const banner = $("#tt-banner");
 
   if (ttSettings === null && ttActivities.length === 0 && !ttEditMode) {
     grid.classList.add("hidden");
     emptyEl.classList.remove("hidden");
     editBtn.hidden = true;
+    exportBtn.hidden = true;
     banner.classList.add("hidden");
     return;
   }
@@ -808,6 +810,7 @@ function renderTimetable() {
   emptyEl.classList.add("hidden");
   editBtn.hidden = false;
   editBtn.textContent = ttEditMode ? "Terminer" : "Modifier";
+  exportBtn.hidden = ttEditMode;
   banner.classList.toggle("hidden", !ttEditMode);
   grid.classList.toggle("editing", ttEditMode);
   $("#tt-slot").value = String(ttSlotMin());
@@ -1770,6 +1773,7 @@ $("#tt-create").addEventListener("click", async () => {
   }
 });
 $("#tt-edit").addEventListener("click", () => { ttEditMode = !ttEditMode; renderTimetable(); });
+$("#tt-export").addEventListener("click", () => { window.print(); });
 $("#tt-slot").addEventListener("change", async () => {
   try {
     await Backend.saveTimetableSettings(Number($("#tt-slot").value));
