@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="style.css?v=20260822k">
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="supabase-config.js"></script>
-<script defer src="app.js?v=20260822i"></script>
+<script defer src="app.js?v=20260822j"></script>
 </head>
 <body>
 
@@ -216,15 +216,57 @@
     <section id="page-weather" class="page hidden">
       <header class="page-head">
         <div>
-          <h2>Meteo</h2>
+          <h2>Météo</h2>
           <p class="page-sub" id="weather-location">-</p>
         </div>
         <div class="weather-search-wrap">
-          <input id="weather-city-search" type="text" placeholder="Rechercher une ville..." class="weather-city-input">
+          <input id="weather-city-search" type="text" placeholder="Rechercher une ville…" class="weather-city-input">
           <button id="weather-city-btn" class="btn-ghost" type="button">Rechercher</button>
         </div>
       </header>
       <div class="weather-weekly" id="weather-weekly"></div>
+
+      <section class="weather-panel weather-monthly-panel">
+        <div class="weather-panel-head">
+          <div>
+            <h3>Statistiques du mois</h3>
+            <p id="weather-monthly-period" class="weather-panel-sub">Chargement des données historiques…</p>
+          </div>
+        </div>
+        <div id="weather-monthly-stats" class="weather-stats-grid"></div>
+        <div id="weather-monthly-chart" class="weather-chart-wrap"></div>
+      </section>
+
+      <div class="weather-two-cols">
+        <section class="weather-panel">
+          <div class="weather-panel-head">
+            <div>
+              <h3>Conditions extérieures</h3>
+              <p class="weather-panel-sub">Indice UV, vent et température ressentie</p>
+            </div>
+          </div>
+          <div id="weather-conditions" class="weather-conditions"></div>
+        </section>
+        <section class="weather-panel">
+          <div class="weather-panel-head">
+            <div>
+              <h3>Qualité de l’air</h3>
+              <p class="weather-panel-sub">Mesure locale Open-Meteo</p>
+            </div>
+          </div>
+          <div id="weather-air" class="weather-air"></div>
+        </section>
+      </div>
+
+      <section class="weather-panel">
+        <div class="weather-panel-head">
+          <div>
+            <h3>Prévisions horaires · 24 h</h3>
+            <p class="weather-panel-sub">Température, pluie et vent heure par heure</p>
+          </div>
+        </div>
+        <div id="weather-hourly" class="weather-hourly"></div>
+      </section>
     </section>
 
     <!-- Projets -->

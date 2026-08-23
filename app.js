@@ -1211,6 +1211,25 @@ const WEATHER_CODES = {
 };
 function weatherEmoji(code) { const w = WEATHER_CODES[code]; return w ? w[0] : "🌤"; }
 function weatherLabel(code) { const w = WEATHER_CODES[code]; return w ? w[1] : "Inconnu"; }
+function uvLabel(value) {
+  if (value == null || Number.isNaN(Number(value))) return "Indisponible";
+  if (value < 3) return "Faible";
+  if (value < 6) return "Modéré";
+  if (value < 8) return "Élevé";
+  if (value < 11) return "Très élevé";
+  return "Extrême";
+}
+function windDirection(deg) {
+  if (deg == null || Number.isNaN(Number(deg))) return "";
+  const dirs = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+  return dirs[Math.round(Number(deg) / 45) % 8];
+}
+function monthKey(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1); }
+function monthLabel(key) {
+  const p = key.split("-").map(Number);
+  return new Date(p[0], p[1] - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+}
+function previousDayKey(d) { return dayKey(addDays(new Date(d.getFullYear(), d.getMonth(), d.getDate()), -1)); }
 
 function loadWeatherCache() {
   weatherCache = lsGet(LS_WEATHER + "_" + session.userId, null);
@@ -1228,22 +1247,20 @@ function weatherCacheValid() {
 
 async function fetchWeather(force) {
   if (!force && weatherCacheValid()) return;
-  let lat, lon;
+  let lat, lon, cityLabel;
   if (weatherCity) {
     try {
       const geoRes = await fetch("https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(weatherCity) + "&count=1&language=fr");
       const geoData = await geoRes.json();
-      if (geoData.results && geoData.results.length) {
-        lat = geoData.results[0].latitude;
-        lon = geoData.results[0].longitude;
-        if (!weatherCache) weatherCache = {};
-                var g = geoData.results[0];
-        var parts = [g.name];
-        if (g.admin2) parts.push(g.admin2);
-        if (g.postcodes && g.postcodes.length) parts.push(g.postcodes[0]);
-        if (g.country) parts.push(g.country);
-        weatherCache.city = parts.join(", ");
-      } else { return; }
+      if (!geoData.results || !geoData.results.length) return;
+      const g = geoData.results[0];
+      lat = g.latitude;
+      lon = g.longitude;
+      const parts = [g.name];
+      if (g.admin2) parts.push(g.admin2);
+      if (g.postcodes && g.postcodes.length) parts.push(g.postcodes[0]);
+      if (g.country) parts.push(g.country);
+      cityLabel = parts.join(", ");
     } catch (e) { return; }
   } else {
     try {
@@ -1252,15 +1269,53 @@ async function fetchWeather(force) {
       });
       lat = pos.coords.latitude;
       lon = pos.coords.longitude;
-      weatherCity = null;
     } catch (e) { return; }
   }
-  try {
-    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat.toFixed(4) + "&longitude=" + lon.toFixed(4) + "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=7";
-    const res = await fetch(url);
-    const data = await res.json();
-    saveWeatherCache({ lat, lon, city: weatherCache?.city || (lat.toFixed(2) + ", " + lon.toFixed(2)), current: data.current, daily: data.daily });
-  } catch (e) {}
+
+  const today = new Date();
+  const monthStart = dayKey(new Date(today.getFullYear(), today.getMonth(), 1));
+  const archiveEnd = previousDayKey(today);
+  const key = monthKey(today);
+  const forecastUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + lat.toFixed(4) + "&longitude=" + lon.toFixed(4) +
+    "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,uv_index" +
+    "&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,uv_index" +
+    "&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,uv_index_max,wind_speed_10m_max,wind_direction_10m_dominant" +
+    "&timezone=auto&forecast_days=7&forecast_hours=24";
+  const archiveUrl = archiveEnd >= monthStart
+    ? "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat.toFixed(4) + "&longitude=" + lon.toFixed(4) +
+      "&start_date=" + monthStart + "&end_date=" + archiveEnd +
+      "&daily=temperature_2m_mean,temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code&timezone=auto"
+    : null;
+  const airUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat.toFixed(4) + "&longitude=" + lon.toFixed(4) +
+    "&hourly=pm10,pm2_5,us_aqi&timezone=auto&forecast_hours=24";
+
+  const [forecastResult, archiveResult, airResult] = await Promise.allSettled([
+    fetch(forecastUrl).then((r) => r.json()),
+    archiveUrl ? fetch(archiveUrl).then((r) => r.json()) : Promise.resolve(null),
+    fetch(airUrl).then((r) => r.json()),
+  ]);
+  if (forecastResult.status !== "fulfilled") return;
+  const forecast = forecastResult.value;
+  const archive = archiveResult.status === "fulfilled" ? archiveResult.value : null;
+  const air = airResult.status === "fulfilled" ? airResult.value : null;
+  const old = weatherCache || {};
+  const airHourly = air && air.hourly;
+  const airData = airHourly ? {
+    time: airHourly.time && airHourly.time[0],
+    pm10: airHourly.pm10 && airHourly.pm10[0],
+    pm2_5: airHourly.pm2_5 && airHourly.pm2_5[0],
+    us_aqi: airHourly.us_aqi && airHourly.us_aqi[0],
+  } : null;
+  saveWeatherCache({
+    lat, lon, city: cityLabel || old.city || (lat.toFixed(2) + ", " + lon.toFixed(2)),
+    current: forecast.current,
+    daily: forecast.daily,
+    hourly: forecast.hourly,
+    monthly: archive && archive.daily ? { key, daily: archive.daily } : (old.monthly && old.monthly.key === key ? old.monthly : null),
+    air: airData || old.air || null,
+  });
+  renderWeatherDashboard();
+  if ($("#page-weather") && !$("#page-weather").classList.contains("hidden")) renderWeatherPage();
 }
 
 function renderWeatherDashboard() {
@@ -1271,40 +1326,138 @@ function renderWeatherDashboard() {
     return;
   }
   const c = weatherCache.current;
-  const code = c.weather_code;
-  el.innerHTML = '<div class="weather-main"><span class="weather-emoji">' + weatherEmoji(code) + '</span>' +
+  el.innerHTML = '<div class="weather-main"><span class="weather-emoji">' + weatherEmoji(c.weather_code) + '</span>' +
     '<span class="weather-temp">' + Math.round(c.temperature_2m) + '°C</span></div>' +
-    '<div class="weather-info"><span>' + weatherLabel(code) + '</span>' +
+    '<div class="weather-info"><span>' + weatherLabel(c.weather_code) + '</span>' +
     '<span class="weather-city">' + esc(weatherCache.city || "") + '</span></div>';
 }
 
+function monthlyStats() {
+  const m = weatherCache && weatherCache.monthly;
+  if (!m || !m.daily || !m.daily.time || !m.daily.time.length) return null;
+  const d = m.daily;
+  const means = (d.temperature_2m_mean || []).filter((v) => v != null);
+  const mins = (d.temperature_2m_min || []).filter((v) => v != null);
+  const maxs = (d.temperature_2m_max || []).filter((v) => v != null);
+  const rain = (d.precipitation_sum || []).filter((v) => v != null);
+  const mean = means.length ? means.reduce((a, b) => a + Number(b), 0) / means.length : null;
+  return {
+    days: d.time.length,
+    mean,
+    minMean: mins.length ? mins.reduce((a, b) => a + Number(b), 0) / mins.length : null,
+    maxMean: maxs.length ? maxs.reduce((a, b) => a + Number(b), 0) / maxs.length : null,
+    rain: rain.reduce((a, b) => a + Number(b), 0),
+    rainyDays: rain.filter((v) => Number(v) >= 0.1).length,
+    daily: d,
+    key: m.key,
+  };
+}
+function weatherNumber(value, unit) { return value == null ? "—" : Number(value).toFixed(unit === "°" ? 1 : 1) + unit; }
+function renderMonthlyWeather() {
+  const statsEl = $("#weather-monthly-stats");
+  const periodEl = $("#weather-monthly-period");
+  const chartEl = $("#weather-monthly-chart");
+  if (!statsEl || !periodEl || !chartEl) return;
+  const stats = monthlyStats();
+  if (!stats) {
+    periodEl.textContent = "Données historiques indisponibles pour le moment.";
+    statsEl.innerHTML = "";
+    chartEl.innerHTML = '<p class="weather-empty">Les statistiques apparaîtront après récupération des données du mois.</p>';
+    return;
+  }
+  periodEl.textContent = "Jours disponibles : " + stats.days + " · " + monthLabel(stats.key);
+  statsEl.innerHTML =
+    '<div class="weather-stat"><strong>' + weatherNumber(stats.mean, "°") + '</strong><span>Température moyenne</span></div>' +
+    '<div class="weather-stat"><strong>' + weatherNumber(stats.minMean, "°") + '</strong><span>Minimale moyenne</span></div>' +
+    '<div class="weather-stat"><strong>' + weatherNumber(stats.maxMean, "°") + '</strong><span>Maximale moyenne</span></div>' +
+    '<div class="weather-stat"><strong>' + stats.rain.toFixed(1) + ' mm</strong><span>Précipitations · ' + stats.rainyDays + ' jour(s)</span></div>';
+  const d = stats.daily;
+  const mins = (d.temperature_2m_min || []).filter((v) => v != null).map(Number);
+  const maxs = (d.temperature_2m_max || []).filter((v) => v != null).map(Number);
+  const floor = Math.floor(Math.min.apply(null, mins.concat(maxs)) - 2);
+  const ceiling = Math.ceil(Math.max.apply(null, mins.concat(maxs)) + 2);
+  const span = Math.max(1, ceiling - floor);
+  chartEl.innerHTML = '<div class="weather-chart-legend"><span><i class="chart-dot high"></i>Maximale</span><span><i class="chart-dot low"></i>Minimale</span></div><div class="weather-chart">' +
+    (d.time || []).map(function(t, i) {
+      const lo = d.temperature_2m_min[i];
+      const hi = d.temperature_2m_max[i];
+      if (lo == null || hi == null) return "";
+      const lowPos = ((Number(lo) - floor) / span) * 100;
+      const highPos = ((Number(hi) - floor) / span) * 100;
+      return '<div class="weather-chart-day" title="' + t + ' · ' + Number(lo).toFixed(1) + '° à ' + Number(hi).toFixed(1) + '°">' +
+        '<div class="weather-chart-values"><b>' + Math.round(hi) + '°</b><span>' + Math.round(lo) + '°</span></div>' +
+        '<div class="weather-chart-track"><i class="weather-chart-range" style="bottom:' + lowPos + '%;height:' + Math.max(4, highPos - lowPos) + '%"></i></div>' +
+        '<small>' + new Date(t + "T12:00:00").getDate() + '</small></div>';
+    }).join("") + '</div>';
+}
+function renderHourlyWeather() {
+  const el = $("#weather-hourly");
+  if (!el) return;
+  const h = weatherCache && weatherCache.hourly;
+  if (!h || !h.time || !h.time.length) { el.innerHTML = '<p class="weather-empty">Prévisions horaires indisponibles.</p>'; return; }
+  el.innerHTML = h.time.slice(0, 24).map(function(t, i) {
+    const date = new Date(t);
+    const rain = h.precipitation_probability && h.precipitation_probability[i];
+    const wind = h.wind_speed_10m && h.wind_speed_10m[i];
+    return '<div class="weather-hour"><strong>' + date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + '</strong>' +
+      '<span class="weather-hour-icon">' + weatherEmoji(h.weather_code[i]) + '</span>' +
+      '<b>' + Math.round(h.temperature_2m[i]) + '°</b>' +
+      '<span>' + (rain == null ? "—" : "💧 " + rain + "%") + '</span>' +
+      '<span>' + (wind == null ? "—" : Math.round(wind) + " km/h") + '</span></div>';
+  }).join("");
+}
+function renderOutdoorConditions() {
+  const el = $("#weather-conditions");
+  if (!el) return;
+  const c = weatherCache && weatherCache.current;
+  const d = weatherCache && weatherCache.daily;
+  if (!c) { el.innerHTML = '<p class="weather-empty">Conditions indisponibles.</p>'; return; }
+  const uv = d && d.uv_index_max ? d.uv_index_max[0] : c.uv_index;
+  const wind = c.wind_speed_10m;
+  const dir = windDirection(c.wind_direction_10m);
+  el.innerHTML =
+    '<div class="weather-condition"><span>Indice UV maximal</span><strong>' + (uv == null ? "—" : Number(uv).toFixed(1)) + '</strong><small>' + uvLabel(uv) + '</small></div>' +
+    '<div class="weather-condition"><span>Vent actuel</span><strong>' + (wind == null ? "—" : Math.round(wind) + ' km/h') + '</strong><small>' + (dir ? 'Direction ' + dir : 'Direction indisponible') + '</small></div>' +
+    '<div class="weather-condition"><span>Ressenti</span><strong>' + (c.apparent_temperature == null ? "—" : Math.round(c.apparent_temperature) + '°C') + '</strong><small>Humidité ' + (c.relative_humidity_2m == null ? "—" : c.relative_humidity_2m + '%') + '</small></div>';
+}
+function airQualityLabel(aqi) {
+  if (aqi == null) return "Indisponible";
+  if (aqi <= 20) return "Très bonne";
+  if (aqi <= 50) return "Bonne";
+  if (aqi <= 100) return "Moyenne";
+  if (aqi <= 150) return "Dégradée";
+  return "Mauvaise";
+}
+function renderAirQuality() {
+  const el = $("#weather-air");
+  if (!el) return;
+  const a = weatherCache && weatherCache.air;
+  if (!a || a.us_aqi == null) { el.innerHTML = '<p class="weather-empty">Qualité de l’air indisponible pour cette localisation.</p>'; return; }
+  el.innerHTML = '<div class="air-main"><strong>' + Math.round(a.us_aqi) + '</strong><span>' + airQualityLabel(Number(a.us_aqi)) + '</span></div>' +
+    '<div class="air-values"><span>PM2.5 <b>' + (a.pm2_5 == null ? "—" : Number(a.pm2_5).toFixed(1) + ' µg/m³') + '</b></span>' +
+    '<span>PM10 <b>' + (a.pm10 == null ? "—" : Number(a.pm10).toFixed(1) + ' µg/m³') + '</b></span>' +
+    '<small>Dernière mesure : ' + (a.time ? new Date(a.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—") + '</small></div>';
+}
 function renderWeatherPage() {
   const locEl = $("#weather-location");
   const weekly = $("#weather-weekly");
   if (!weatherCache || !weatherCache.daily) {
     locEl.textContent = "Aucune donnée météo. Recherche une ville ou active la localisation.";
     weekly.innerHTML = "";
+    renderMonthlyWeather(); renderHourlyWeather(); renderOutdoorConditions(); renderAirQuality();
     return;
   }
   locEl.textContent = weatherCache.city || (weatherCache.lat.toFixed(2) + ", " + weatherCache.lon.toFixed(2));
   const d = weatherCache.daily;
-  const now = new Date();
   let html = "";
   for (let i = 0; i < Math.min(7, d.time.length); i++) {
     const date = new Date(d.time[i] + "T12:00:00");
     const dayName = i === 0 ? "Aujourd'hui" : (i === 1 ? "Demain" : DAYS_FULL[(date.getDay() + 6) % 7]);
     const code = d.weather_code[i];
-    html += '<div class="weather-day">' +
-      '<div class="wd-name">' + dayName + '</div>' +
-      '<div class="wd-date">' + fmtDateShort(date) + '</div>' +
-      '<div class="wd-emoji">' + weatherEmoji(code) + '</div>' +
-      '<div class="wd-label">' + weatherLabel(code) + '</div>' +
-      '<div class="wd-temps"><span class="wd-hi">' + Math.round(d.temperature_2m_max[i]) + '°</span>' +
-      '<span class="wd-lo">' + Math.round(d.temperature_2m_min[i]) + '°</span></div>' +
-      (d.precipitation_probability_max[i] ? '<div class="wd-rain">💧 ' + d.precipitation_probability_max[i] + '%</div>' : '') +
-      '</div>';
+    html += '<div class="weather-day"><div class="wd-name">' + dayName + '</div><div class="wd-date">' + fmtDateShort(date) + '</div><div class="wd-emoji">' + weatherEmoji(code) + '</div><div class="wd-label">' + weatherLabel(code) + '</div><div class="wd-temps"><span class="wd-hi">' + Math.round(d.temperature_2m_max[i]) + '°</span><span class="wd-lo">' + Math.round(d.temperature_2m_min[i]) + '°</span></div>' + (d.precipitation_probability_max[i] ? '<div class="wd-rain">💧 ' + d.precipitation_probability_max[i] + '%</div>' : '') + '</div>';
   }
   weekly.innerHTML = html;
+  renderMonthlyWeather(); renderHourlyWeather(); renderOutdoorConditions(); renderAirQuality();
 }
 
 async function searchWeatherCity() {
@@ -1312,7 +1465,6 @@ async function searchWeatherCity() {
   const city = input.value.trim();
   if (!city) return;
   weatherCity = city;
-  saveWeatherCache(weatherCache || {});
   await fetchWeather(true);
   renderWeatherPage();
   renderWeatherDashboard();
