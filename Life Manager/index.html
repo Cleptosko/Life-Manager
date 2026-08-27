@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Life Manager</title>  <link rel="icon" type="image/png" href="logo.png">
+<link rel="stylesheet" href="style.css?v=20260827ak">
+<script defer src="app.js?v=20260827upg"></script>
+</head>
+<body>
+
+<!-- ===== Connexion ===== -->
+<div id="view-login" class="hidden">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand"><img src="logo.png?v=4" alt="" class="login-logo"><span>Life Manager</span></div>
+      <h1 id="login-title"></h1>
+      <p class="login-sub" id="login-sub"></p>
+      <div id="login-setup-msg" class="login-hint hidden">&#128274; Tes donnees seront chiffrees avec ce mot de passe. Sans lui, elles sont irrecuperables : note-le quelque part !<br><small>Astuce : un mot de passe fort sera demande pour acceder au coffre de mots de passe.</small></div>
+      <form id="login-form" novalidate>
+        <label class="field hidden" id="name-field"><span>Ton prenom ou surnom</span><input type="text" id="name-input" maxlength="40" placeholder="Ex. Marie" autocomplete="name"></label>
+        <label class="field"><span>Mot de passe</span><input type="password" id="pw-input" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"></label>
+        <p class="login-msg" id="login-msg"></p>
+        <button type="submit" class="btn-primary btn-block" id="login-btn">Acceder</button>
+      </form>
+      <button id="forgot-pw" class="login-forgot hidden" type="button">Mot de passe oublié ?</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Application ===== -->
+<div id="view-app" class="hidden">
+  <aside class="sidebar">
+    <div class="brand side-brand">
+      <img class="logo logo-img" src="logo.png?v=4" alt="">
+      <span>Life Manager</span>
+    </div>
+    <nav class="nav">
+      <button id="nav-dashboard" class="nav-item active" type="button">🏠 <span>Tableau de bord</span></button>
+      <button id="nav-schedule" class="nav-item" type="button">🗓 <span>Agenda</span></button>
+      <button id="nav-timetable" class="nav-item" type="button">🏫 <span>Emploi du temps</span></button>
+      <button id="nav-todos" class="nav-item" type="button">✅ <span>To-Do List</span></button>
+      <button id="nav-weather" class="nav-item" type="button">🌦 <span>Météo</span></button>
+      <button id="nav-youtube" class="nav-item" type="button">▶️ <span>YouTube</span></button>
+      <button id="nav-projects" class="nav-item" type="button">📁 <span>Projets</span></button>
+      <button id="nav-passwords" class="nav-item" type="button">🔑 <span>Mots de passe</span></button>
+    </nav>
+    <div class="sidebar-user">
+      <button id="btn-theme" class="logout" type="button" title="Mode clair">🌙</button>
+      <button id="btn-settings" class="logout nav-options-btn" type="button" title="Paramètres">⚙️</button>
+      <button id="btn-logout" class="logout quit-btn" type="button" title="Se déconnecter">⏻ Quitter</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- Tableau de bord -->
+    <section id="page-dashboard" class="page">
+      <header class="page-head">
+        <div>
+          <h2 id="dash-greeting">Bonjour</h2>
+          <p class="page-sub"><span id="dash-date"></span> · <span id="dash-clock"></span></p>
+        </div>
+      </header>
+
+      <div class="dash-layout">
+        <div class="dash-main">
+          <div class="cards">
+            <div class="stat-card">
+              <span class="stat-num" id="dash-event-today">0</span>
+              <span class="stat-label">Événement(s) aujourd'hui</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-num" id="dash-todo-pending">0</span>
+              <span class="stat-label">Tâche(s) en attente</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-num" id="dash-week">—</span>
+              <span class="stat-label">Semaine en cours</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-num" id="dash-course-today">0</span>
+              <span class="stat-label">Activité(s) aujourd'hui</span>
+            </div>
+            <div class="stat-card weather-card" id="dash-weather">
+              <span class="stat-label">Météo</span>
+              <div class="weather-now" id="weather-now">
+                <span class="weather-loading">Chargement…</span>
+              </div>
+            </div>
+            <div class="stat-card dash-yt-mini hidden" id="dash-yt-mini">
+              <span class="stat-label">Ma chaîne</span>
+              <div class="dash-yt-mini-body" id="dash-yt-mini-body"></div>
+            </div>
+            <div class="stat-card wide">
+              <span class="stat-label">Prochain événement</span>
+              <span class="stat-next" id="dash-next-event">—</span>
+            </div>
+          </div>
+
+          <div class="dash-cols">
+            <div class="panel">
+              <h3>Aujourd'hui</h3>
+              <div id="dash-today-list" class="dash-list"></div>
+            </div>
+            <div class="panel">
+              <h3>À faire</h3>
+              <div id="dash-todos-list" class="dash-list"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Projets en cours</h3>
+            <div id="dash-projects-list" class="dash-projects-list"></div>
+          </div>
+        </div>
+
+        <aside class="panel news-panel">
+          <div class="news-head">
+            <h3>📰 Actualités</h3>
+            <select id="news-cat" title="Rubrique">
+              <option value="top">À la une</option>
+              <option value="tech">Technologie</option>
+              <option value="sport">Sport</option>
+              <option value="sante">Santé</option>
+              <option value="science">Science</option>
+              <option value="jeux">Jeux vidéo</option>
+            </select>
+            <button id="news-refresh" type="button" title="Actualiser">↻</button>
+          </div>
+          <div id="news-list" class="news-list"></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Emploi du temps -->
+    <section id="page-schedule" class="page hidden">
+      <div class="schedule-toolbar">
+        <div class="view-switch">
+          <button class="cal-view-btn" data-view="week" type="button">Semaine</button>
+          <button class="cal-view-btn active" data-view="month" type="button">Mois</button>
+          <button class="cal-view-btn" data-view="year" type="button">Année</button>
+        </div>
+        <button id="cal-add-event" class="btn-primary" type="button">＋ Événement</button>
+        <div class="cal-nav">
+          <button id="cal-prev" class="icon-btn" type="button">‹</button>
+          <button id="cal-today" type="button">Aujourd'hui</button>
+          <button id="cal-next" class="icon-btn" type="button">›</button>
+          <span id="cal-label" class="cal-label"></span>
+        </div>
+      </div>
+      <div id="calendar" class="calendar"></div>
+    </section>
+
+    <!-- Emploi du temps (hebdomadaire) -->
+    <section id="page-timetable" class="page hidden">
+      <header class="page-head">
+        <div>
+          <h2>Emploi du temps</h2>
+          <p class="page-sub">Planning hebdomadaire — tes activités récurrentes, sans dates.</p>
+        </div>
+        <div class="tt-actions">
+          <button id="tt-export-excel" class="btn-ghost" type="button" hidden title="Exporter en Excel (.xlsx)">📊 Excel</button>
+          <button id="tt-export-pdf" class="btn-ghost" type="button" hidden title="Exporter en PDF (.pdf)">📄 PDF</button>
+          <button id="tt-export" class="btn-primary" type="button" hidden title="Imprimer / PDF navigateur">🖨 Imprimer</button>
+          <button id="tt-edit" class="btn-ghost" type="button" hidden>Modifier</button>
+        </div>
+      </header>
+
+      <div id="tt-empty" class="tt-empty hidden">
+        <p>Tu n'as pas encore d'emploi du temps.</p>
+        <button id="tt-create" class="btn-primary" type="button">Créer un emploi du temps</button>
+      </div>
+
+      <div id="tt-banner" class="tt-banner hidden">
+        <span class="tt-banner-tag">✏️ Mode édition activé</span>
+        <span class="tt-banner-sub">Clique sur une case pour ajouter, ou sur une activité pour la modifier.</span>
+      </div>
+
+      <div id="tt-grid" class="tt-grid hidden">
+        <div class="tt-scroll"><div class="tt-head" id="tt-head"></div><div class="tt-board" id="tt-board"></div></div>
+      </div>
+    </section>
+
+    <!-- To-Do List -->
+    <section id="page-todos" class="page hidden">
+      <header class="page-head">
+        <h2>To-Do List</h2>
+        <div class="todo-add-row">
+          <input id="todo-input" type="text" placeholder="Ajouter une tâche…">
+          <select id="todo-priority">
+            <option value="high">Haute</option>
+            <option value="medium">Moyenne</option>
+            <option value="low">Basse</option>
+          </select>
+          <input id="todo-due" type="date" title="Date limite (optionnel)">
+          <button id="todo-add" class="btn-primary" type="button">Ajouter</button>
+        </div>
+      </header>
+      <div class="todo-progress">
+        <div class="todo-bar"><div id="todo-progress-fill"></div></div>
+        <span id="todo-progress-label">0 / 0</span>
+      </div>
+      <div class="todo-filters">
+        <button class="tf active" data-filter="all" type="button">Toutes</button>
+        <button class="tf" data-filter="active" type="button">À faire</button>
+        <button class="tf" data-filter="done" type="button">Terminées</button>
+      </div>
+      <ul id="todo-list" class="todo-list"></ul>
+    </section>
+
+    <!-- Meteo -->
+    <section id="page-weather" class="page hidden">
+      <header class="page-head">
+        <div>
+          <h2>Météo</h2>
+          <p class="page-sub" id="weather-location">-</p>
+        </div>
+        <div class="weather-search-wrap">
+          <input id="weather-city-search" type="text" placeholder="Rechercher une ville…" class="weather-city-input">
+          <button id="weather-city-btn" class="btn-ghost" type="button">Rechercher</button>
+        </div>
+      </header>
+      <div id="weather-scroll">
+      <div class="weather-weekly" id="weather-weekly"></div>
+
+      <section class="weather-panel weather-monthly-panel">
+        <div class="weather-panel-head">
+          <div>
+            <h3>Statistiques du mois</h3>
+            <p id="weather-monthly-period" class="weather-panel-sub">Chargement des données historiques…</p>
+          </div>
+        </div>
+        <div id="weather-monthly-stats" class="weather-stats-grid"></div>
+        <div id="weather-monthly-chart" class="weather-chart-wrap"></div>
+      </section>
+
+      <div class="weather-two-cols">
+        <section class="weather-panel">
+          <div class="weather-panel-head">
+            <div>
+              <h3>Conditions extérieures</h3>
+              <p class="weather-panel-sub">Indice UV, vent et température ressentie</p>
+            </div>
+          </div>
+          <div id="weather-conditions" class="weather-conditions"></div>
+        </section>
+        <section class="weather-panel">
+          <div class="weather-panel-head">
+            <div>
+              <h3>Qualité de l’air</h3>
+              <p class="weather-panel-sub">Mesure locale Open-Meteo</p>
+            </div>
+          </div>
+          <div id="weather-air" class="weather-air"></div>
+        </section>
+      </div>
+
+      <section class="weather-panel">
+        <div class="weather-panel-head">
+          <div>
+            <h3>Prévisions horaires · 24 h</h3>
+            <p class="weather-panel-sub">Température, pluie et vent heure par heure</p>
+          </div>
+        </div>
+        <div id="weather-hourly" class="weather-hourly"></div>
+      </section>
+      </div>
+    </section>
+
+    <!-- YouTube -->
+    <section id="page-youtube" class="page hidden">
+      <header class="page-head">
+        <div>
+          <h2>YouTube</h2>
+          <p class="page-sub">Recherche, tendances, dashboard de chaîne et statistiques — clé API YouTube Data v3.</p>
+        </div>
+        <div class="yt-settings">
+          <input id="yt-key-input" type="password" placeholder="Clé API YouTube…" class="yt-key-input">
+          <button id="yt-key-save" class="btn-ghost" type="button">Enregistrer la clé</button>
+          <input id="yt-channel-input" type="text" placeholder="Handle ou ID de chaîne… (ex. @monchaine)" class="yt-key-input">
+          <button id="yt-channel-save" class="btn-ghost" type="button">Enregistrer la chaîne</button>
+          <button id="yt-info" class="btn-ghost" type="button" title="Aide : mettre en place les API YouTube">❓ Aide</button>
+        </div>
+      </header>
+
+      <div id="yt-key-missing" class="yt-hint hidden">
+        ⚠️ Aucune clé API enregistrée. Crée une clé gratuite sur
+        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>
+        (API « YouTube Data API v3 » activée), puis colle-la ci-dessus.
+      </div>
+
+      <div id="yt-channel-missing" class="yt-hint hidden">
+        ⚠️ Aucune chaîne configurée pour le dashboard. Entre ton <strong>@handle</strong> (ex. @monchaine)
+        ou l'<strong>ID</strong> de la chaîne dans le champ « Handle ou ID de chaîne… », puis clique sur
+        « Enregistrer la chaîne ».
+      </div>
+
+      <div class="yt-tabs">
+        <button class="yt-tab active" data-ytview="trending" type="button">🔥 Tendances France</button>
+        <button class="yt-tab" data-ytview="search" type="button">🔍 Recherche</button>
+        <button class="yt-tab" data-ytview="channel" type="button">📺 Ma chaîne</button>
+      </div>
+
+      <div class="yt-toolbar">
+        <select id="yt-trending-filter" title="Catégorie de tendances" class="hidden">
+          <option value="">🔥 Toutes les tendances</option>
+          <option value="20">🎮 Jeux vidéo</option>
+          <option value="10">🎵 Musique</option>
+          <option value="24">🍿 Divertissement</option>
+          <option value="17">⚽ Sport</option>
+          <option value="25">📰 Actualités</option>
+          <option value="28">🔬 Sciences &amp; Tech</option>
+          <option value="27">📚 Éducation</option>
+          <option value="1">🎬 Films &amp; Animations</option>
+          <option value="22">👤 People &amp; Blogs</option>
+          <option value="23">😂 Comédie</option>
+        </select>
+        <input id="yt-search-input" type="text" placeholder="Rechercher une vidéo…">
+        <button id="yt-search-btn" class="btn-primary" type="button">Rechercher</button>
+      </div>
+
+      <div id="yt-results" class="yt-results"></div>
+    </section>
+
+    <!-- Projets -->
+    <section id="page-projects" class="page hidden">
+      <header class="page-head">
+        <div>
+          <h2>Projets</h2>
+          <p class="page-sub" id="proj-count"></p>
+        </div>
+        <div class="proj-toolbar">
+          <input id="proj-search" type="text" placeholder="Rechercher…">
+          <select id="proj-filter-status" title="Filtrer par statut">
+            <option value="all">Tous les statuts</option>
+            <option value="todo">À faire</option>
+            <option value="doing">En cours</option>
+            <option value="done">Terminés</option>
+            <option value="paused">En pause</option>
+          </select>
+          <select id="proj-filter-prio" title="Filtrer par priorité">
+            <option value="all">Toutes priorités</option>
+            <option value="high">Haute</option>
+            <option value="medium">Moyenne</option>
+            <option value="low">Basse</option>
+          </select>
+          <select id="proj-sort" title="Trier">
+            <option value="recent">Plus récents</option>
+            <option value="due">Échéance</option>
+            <option value="progress">Progression</option>
+            <option value="priority">Priorité</option>
+            <option value="name">Nom</option>
+          </select>
+          <button id="proj-export" class="btn-ghost" type="button" title="Exporter en CSV">⬇ CSV</button>
+          <button id="proj-new" class="btn-primary" type="button">+ Nouveau projet</button>
+        </div>
+      </header>
+      <div id="proj-scroll">
+        <div id="proj-stats" class="proj-stats"></div>
+        <div id="proj-list" class="proj-list"></div>
+        <div id="proj-detail" class="proj-detail hidden"></div>
+      </div>
+    </section>
+
+    <!-- Options -->
+    <section id="page-options" class="page hidden">
+      <header class="page-head">
+        <div>
+          <h2>⚙️ Paramètres</h2>
+          <p class="page-sub">Personnalise ton profil et sécurise ton accès.</p>
+        </div>
+      </header>
+      <div class="opt-scroll">
+        <div class="panel opt-panel">
+          <h3>👤 Nom de profil</h3>
+          <p class="opt-hint">Ce nom est affiché dans le tableau de bord (Bonjour…). Il te sera demandé au démarrage.</p>
+          <label class="field"><span>Nom</span><input id="opt-username" type="text" maxlength="40" placeholder="Ton prénom ou surnom"></label>
+          <div class="opt-actions">
+            <button id="opt-save-name" class="btn-primary" type="button">Enregistrer le nom</button>
+            <span id="opt-name-msg" class="opt-msg"></span>
+          </div>
+        </div>
+        <div class="panel opt-panel">
+          <h3>🔒 Changer le mot de passe</h3>
+          <p class="opt-hint">Modifie ton mot de passe d'accès à l'application.</p>
+          <label class="field"><span>Mot de passe actuel</span><input id="opt-old-pw" type="password" autocomplete="current-password" placeholder="••••••••"></label>
+          <label class="field"><span>Nouveau mot de passe</span><input id="opt-new-pw" type="password" autocomplete="new-password" placeholder="••••••••"></label>
+          <label class="field"><span>Confirmer le nouveau</span><input id="opt-new-pw2" type="password" autocomplete="new-password" placeholder="••••••••"></label>
+          <div class="opt-actions">
+            <button id="opt-save-pw" class="btn-primary" type="button">Changer le mot de passe</button>
+            <span id="opt-pw-msg" class="opt-msg"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="page-passwords" class="page hidden">
+      <header class="page-head">
+        <div>
+          <h2>🔑 Mots de passe</h2>
+          <p class="page-sub">Coffre local chiffré — <span id="pw-count">0 mot de passe</span></p>
+        </div>
+        <div class="page-actions">
+          <button class="btn-ghost" id="pw-import" type="button">⬆ Importer</button>
+          <button class="btn-ghost" id="pw-export" type="button">⬇ Exporter</button>
+          <button class="btn-danger" id="pw-clear" type="button" title="Effacer tous les mots de passe">🗑 Vider</button>
+          <button class="btn-primary" id="pw-new" type="button">＋ Nouveau</button>
+        </div>
+      </header>
+      <div class="pw-toolbar">
+        <input class="field-input pw-search" id="pw-search" type="search" placeholder="🔍 Rechercher un site, un identifiant…">
+        <div class="pw-toolbar-right">
+          <select class="field-input pw-sort" id="pw-sort">
+            <option value="site">Trier par site</option>
+            <option value="cat">Trier par catégorie</option>
+            <option value="recent">Plus récents</option>
+          </select>
+        </div>
+      </div>
+      <div class="pw-cats" id="pw-cats"></div>
+      <div class="pw-list" id="pw-list"></div>
+      <div class="pw-empty" id="pw-empty">
+        <p>Aucun mot de passe.</p>
+        <p class="pw-empty-sub">Ajoute le premier avec <b>＋ Nouveau</b>, ou importe tes données navigateur avec <b>⬆ Importer</b>.</p>
+      </div>
+
+  </main>
+</div>
+
+<!-- ===== Modale événement ===== -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modal-title">Nouvel événement</h2>
+    <label class="field"><span>Titre</span><input id="ev-title" type="text" placeholder="Ex : Réunion d'équipe"></label>
+    <div class="row">
+      <label class="field grow"><span>Date</span><input id="ev-date" type="date"></label>
+      <label class="field check"><input id="ev-allday" type="checkbox"><span>Journée entière</span></label>
+    </div>
+    <div class="row" id="ev-times">
+      <label class="field"><span>Début</span><input id="ev-start" type="time"></label>
+      <label class="field"><span>Fin</span><input id="ev-end" type="time"></label>
+    </div>
+    <div class="modal-footer">
+      <button id="modal-delete" class="btn-danger" type="button" style="display:none">Supprimer</button>
+      <span class="spacer"></span>
+      <button id="modal-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="modal-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modale activité (emploi du temps) ===== -->
+<div class="modal-overlay" id="modal-tt">
+  <div class="modal">
+    <button class="modal-x" id="ttm-close" type="button" title="Fermer">✕</button>
+    <h2 id="ttm-title">Activité</h2>
+    <div id="ttm-body"></div>
+    <div class="modal-footer" id="ttm-footer"></div>
+  </div>
+</div>
+
+<!-- ===== Modale tâche (To-Do) ===== -->
+<div class="modal-overlay" id="modal-todo">
+  <div class="modal">
+    <button class="modal-x" id="todom-close" type="button" title="Fermer">✕</button>
+    <h2 id="todom-title">Modifier la tâche</h2>
+    <label class="field"><span>Titre</span><input id="todox-title" type="text" placeholder="Ex : Réviser le chapitre 3"></label>
+    <label class="field"><span>Priorité</span>
+      <select id="todox-priority">
+        <option value="high">Haute</option>
+        <option value="medium">Moyenne</option>
+        <option value="low">Basse</option>
+      </select>
+    </label>
+    <label class="field"><span>Date limite (optionnel)</span><input id="todox-due" type="date"></label>
+    <label class="field check"><input id="todox-done" type="checkbox"><span>Terminée</span></label>
+    <div class="modal-footer">
+      <button id="todom-del" class="btn-danger" type="button" style="display:none">Supprimer</button>
+      <span class="spacer"></span>
+      <button id="todom-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="todom-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modale projet ===== -->
+<div class="modal-overlay" id="modal-proj">
+  <div class="modal">
+    <button class="modal-x" id="projm-close" type="button" title="Fermer">✕</button>
+    <h2 id="projm-title">Nouveau projet</h2>
+    <label class="field"><span>Nom</span><input id="projm-name" type="text" placeholder="Ex : Rénovation salon"></label>
+    <label class="field"><span>Description</span><textarea id="projm-desc" rows="3" placeholder="Objectif, idées, infos…"></textarea></label>
+    <div class="row">
+      <label class="field grow"><span>Statut</span>
+        <select id="projm-status">
+          <option value="todo">À faire</option>
+          <option value="doing">En cours</option>
+          <option value="done">Terminé</option>
+          <option value="paused">En pause</option>
+        </select>
+      </label>
+      <label class="field grow"><span>Priorité</span>
+        <select id="projm-priority">
+          <option value="high">Haute</option>
+          <option value="medium">Moyenne</option>
+          <option value="low">Basse</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label class="field grow"><span>Date limite</span><input id="projm-due" type="date"></label>
+      <label class="field grow"><span>Couleur</span>
+        <select id="projm-color">
+          <option value="c1">Vert</option>
+          <option value="c2">Bleu</option>
+          <option value="c3">Violet</option>
+          <option value="c4">Jaune</option>
+          <option value="c5">Rose</option>
+          <option value="c6">Turquoise</option>
+        </select>
+      </label>
+    </div>
+    <label class="field"><span>Étiquettes (séparées par des virgules)</span><input id="projm-tags" type="text" placeholder="Ex : travail, urgent"></label>
+    <div class="modal-footer">
+      <button id="projm-del" class="btn-danger" type="button" style="display:none">Supprimer</button>
+      <span class="spacer"></span>
+      <button id="projm-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="projm-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modale tâche de projet (Kanban) ===== -->
+<div class="modal-overlay" id="modal-ptask">
+  <div class="modal">
+    <button class="modal-x" id="ptaskm-close" type="button" title="Fermer">✕</button>
+    <h2 id="ptaskm-title">Nouvelle tâche</h2>
+    <label class="field"><span>Titre</span><input id="ptaskm-name" type="text" placeholder="Ex : Rédiger le cahier des charges"></label>
+    <div class="row">
+      <label class="field grow"><span>Priorité</span>
+        <select id="ptaskm-priority">
+          <option value="high">Haute</option>
+          <option value="medium">Moyenne</option>
+          <option value="low">Basse</option>
+        </select>
+      </label>
+      <label class="field grow"><span>Statut</span>
+        <select id="ptaskm-status">
+          <option value="todo">À faire</option>
+          <option value="doing">En cours</option>
+          <option value="done">Terminé</option>
+        </select>
+      </label>
+    </div>
+    <label class="field"><span>Date limite (optionnel)</span><input id="ptaskm-due" type="date"></label>
+    <div class="modal-footer">
+      <button id="ptaskm-del" class="btn-danger" type="button" style="display:none">Supprimer</button>
+      <span class="spacer"></span>
+      <button id="ptaskm-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="ptaskm-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Page Mots de passe ===== -->
+</section>
+
+<!-- ===== Modale mot de passe ===== -->
+<div class="modal-overlay" id="modal-pw">
+  <div class="modal" id="pwm-box">
+    <button class="modal-x" id="pwm-close" type="button" title="Fermer">✕</button>
+    <div class="modal-head"><h3 id="pwm-title">Nouveau mot de passe</h3></div>
+    <div class="modal-body">
+      <label class="field"><span>Site / Application</span><input class="field-input" id="pwm-site" type="text" maxlength="120" placeholder="ex. Gmail"></label>
+      <label class="field"><span>URL (optionnel)</span><input class="field-input" id="pwm-url" type="url" maxlength="300" placeholder="https://…"></label>
+      <label class="field"><span>Identifiant</span><input class="field-input" id="pwm-username" type="text" autocomplete="off" maxlength="200" placeholder="ex. alice@mail.com"></label>
+      <label class="field"><span>Mot de passe</span>
+        <div class="pw-pw-row">
+          <input class="field-input" id="pwm-password" type="password" autocomplete="new-password" maxlength="300" placeholder="••••••••">
+          <button class="btn-ghost pw-eye" id="pwm-eye" type="button" title="Afficher/masquer">👁</button>
+          <button class="btn-ghost" id="pwm-gen" type="button" title="Générer un mot de passe fort">🎲</button>
+        </div>
+      </label>
+      <label class="field"><span>Catégorie</span>
+        <div class="pw-pw-row">
+          <select class="field-input" id="pwm-cat"></select>
+          <button class="btn-ghost" id="pwm-cat-new" type="button" title="Nouvelle catégorie">＋</button>
+        </div>
+      </label>
+      <label class="field"><span>Notes (optionnel)</span><textarea class="field-input" id="pwm-notes" rows="2" maxlength="500" placeholder="Remarques…"></textarea></label>
+      <p class="opt-msg" id="pwm-msg"></p>
+    </div>
+    <div class="modal-footer">
+      <button id="pwm-del" class="btn-danger" type="button" style="display:none">Supprimer</button>
+      <span class="spacer"></span>
+      <button id="pwm-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="pwm-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modale récupération import ===== -->
+<div class="modal-overlay" id="modal-import-pw">
+  <div class="modal" id="pwip-box">
+    <button class="modal-x" id="pwip-close" type="button" title="Fermer">✕</button>
+    <div class="modal-head"><h3>Importer des mots de passe</h3></div>
+    <div class="modal-body">
+      <p class="opt-hint">Sélectionne le fichier CSV exporté depuis ton navigateur (Chrome / Edge / Firefox) ou un fichier CSV avec les colonnes : site, identifiant, mot de passe.</p>
+      <label class="field"><span>Fichier CSV</span><input class="field-input" id="pwip-file" type="file" accept=".csv,text/csv"></label>
+      <p class="opt-msg" id="pwip-msg"></p>
+    </div>
+    <div class="modal-footer">
+      <span class="spacer"></span>
+      <button id="pwip-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="pwip-confirm" class="btn-primary submit" type="button" disabled>Importer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modale confirmation mot de passe (vider le coffre) ===== -->
+<!-- ===== Modale renforcement du mot de passe (accès au coffre) ===== -->
+<div class="modal-overlay" id="modal-pw-upgrade">
+  <div class="modal">
+    <button class="modal-x" id="pwu-close" type="button" title="Fermer">✕</button>
+    <div class="modal-head"><h3>🔐 Sécurise ton coffre de mots de passe</h3></div>
+    <div class="modal-body">
+      <p class="opt-hint">Le coffre de mots de passe contient des données sensibles. Pour y accéder, choisis un <b>mot de passe fort</b> (12 caractères min, majuscule, minuscule, chiffre, symbole).</p>
+      <label class="field"><span>Mot de passe actuel</span><input class="field-input" id="pwu-old" type="password" autocomplete="current-password" placeholder="••••••••"></label>
+      <label class="field"><span>Nouveau mot de passe</span><input class="field-input" id="pwu-new" type="password" autocomplete="new-password" placeholder="••••••••"></label>
+      <label class="field"><span>Confirmer le nouveau</span><input class="field-input" id="pwu-new2" type="password" autocomplete="new-password" placeholder="••••••••"></label>
+      <p class="opt-msg" id="pwu-msg"></p>
+    </div>
+    <div class="modal-footer">
+      <span class="spacer"></span>
+      <button id="pwu-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="pwu-confirm" class="btn-primary" type="button">Sécuriser et accéder</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-pw-confirm">
+  <div class="modal">
+    <button class="modal-x" id="pwc-close" type="button" title="Fermer">✕</button>
+    <div class="modal-head"><h3>Vider le coffre de mots de passe ?</h3></div>
+    <div class="modal-body">
+      <p class="opt-hint">Tous les mots de passe et catégories seront effacés définitivement.<br>Pour confirmer, entre ton <b>mot de passe de l'application</b> :</p>
+      <label class="field"><span>Mot de passe</span><input class="field-input" id="pwc-password" type="password" autocomplete="current-password" placeholder="••••••••"></label>
+      <p class="opt-msg" id="pwc-msg"></p>
+    </div>
+    <div class="modal-footer">
+      <span class="spacer"></span>
+      <button id="pwc-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="pwc-confirm" class="btn-danger" type="button">Vider définitivement</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modale vidéo YouTube ===== -->
+<div class="modal-overlay" id="modal-yt">
+  <div class="modal modal-wide">
+    <button class="modal-x" id="ytm-close" type="button" title="Fermer">✕</button>
+    <div id="ytm-body"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-yt-info">
+  <div class="modal modal-wide">
+    <button class="modal-x" id="ytinfo-close" type="button" title="Fermer">✕</button>
+    <div id="ytinfo-body" class="yt-info-body"></div>
+  </div>
+</div>
+
+</body>
+</html>

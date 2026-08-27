@@ -1,0 +1,58 @@
+{
+  "name": "life-manager",
+  "version": "1.0.0",
+  "description": "Life Manager - application de gestion personnelle (agenda, emploi du temps, projets, météo, actualités, YouTube)",
+  "main": "main.js",
+  "author": "FreeBuff",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "dist:dir": "electron-builder --win dir"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.freebuff.lifemanager",
+    "productName": "Life Manager",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "artifactName": "Life-Manager-Setup-${version}.exe",
+      "uninstallDisplayName": "Life Manager",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Life Manager",
+      "installerLanguages": ["fr_FR"],
+      "displayLanguageSelector": false,
+      "runAfterFinish": true
+    },
+    "electronLanguages": [
+      "fr"
+    ],
+    "npmRebuild": false
+  }
+}

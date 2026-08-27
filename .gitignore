@@ -1,13 +1,26 @@
-# --- Ancienne application de bureau (ignorée : on ne garde que le site) ---
-dist/
-Flow.pyw
-Flow.spec
-flow.ico
-kanban.html
-Lancer Flow.bat
-build/
-__pycache__/
-*.pyc
+# Dépendances
+node_modules/
 
-# --- Interne ---
+# Builds et artefacts générés
+desktop/dist/
+
+# Dossier exe (livré via GitHub Releases, pas dans le repo)
+Life Manager Exe/
+
+# Copies d'installation / temporaires
+Nouveau dossier/
+*.tmp
+*.log
+
+# Environnements
+.env
+.env.local
+
+# Système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Outillage local (pas le projet)
+.claude/
 .freebuff/

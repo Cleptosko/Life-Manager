@@ -1,161 +1,99 @@
 # 🌿 Life Manager
 
-Application web d'organisation personnelle : tableau de bord, **Agenda**
-(événements datés, vues Jour / Semaine / Mois / Année), **Emploi du temps**
-(planning hebdomadaire en grille, sans dates — le « mode scolaire ») et
-**To-Do List** (priorités + date limite + tri automatique + édition par modale).
+Application de gestion personnelle tout-en-un : **tableau de bord** avec actualités,
+**Agenda**, **Emploi du temps** (avec export Excel/PDF), **To-Do List**, **Météo**,
+**YouTube** (tendances, recherche, dashboard de chaîne), **Projets** (kanban, journal
+d'avancement) et **Coffre de mots de passe** chiffré (AES-256-GCM + PBKDF2).
 
-Couleur principale : vert `#03fc49`, avec une couleur par onglet
-(vert = tableau de bord, bleu = agenda, violet = emploi du temps,
-jaune = to-do). Thème **clair / sombre** commutable à tout moment.
-Hébergement prévu : **GitHub Pages**.
+Couleur principale : vert `#03fc49`, avec une couleur par onglet. Thème clair/sombre.
+Données 100 % locales et chiffrées : rien n'est envoyé sur un serveur.
 
-## Technologies
+---
 
-- HTML / CSS / JavaScript (aucun build nécessaire)
-- [Supabase](https://supabase.com) pour l'authentification et les données
-  (chargé via CDN)
+## 📥 Téléchargement
 
-## 1. Créer le projet Supabase (gratuit)
+Deux versions sont disponibles dans la section **[Releases](https://github.com/Cleptosko/Life-Manager/releases)** :
 
-1. Va sur <https://supabase.com> et crée un compte.
-2. Crée un nouveau projet (n'importe quel nom, ex. `life-manager`).
-3. Dans **Settings > API**, copie :
-   - l'**URL** du projet ;
-   - la clé **anon / public**.
-4. Colle-les dans le fichier `supabase-config.js`.
+| Version | Fichier | Pour qui |
+|---|---|---|
+| 🖥️ **Application Windows** | `Life-Manager-Setup-1.0.0.exe` | Tout le monde — installer classique (choix du dossier, raccourci bureau, icône) |
+| 🌐 **Version web (code source)** | `life-manager-web.zip` | Les développeurs qui veulent ouvrir, modifier ou améliorer l'application |
 
-> Pour tester sans recevoir d'email de confirmation :
-> **Authentication > Providers > Email** → désactive
-> *« Confirm email »*. (Pour la production, laisse-le activé.)
+### 🖥️ Version exe (recommandée)
 
-## 2. Créer les tables (SQL)
+1. Télécharge `Life-Manager-Setup-1.0.0.exe` depuis les [Releases](https://github.com/Cleptosko/Life-Manager/releases).
+2. Lance l'installateur, choisis le dossier d'installation, puis l'app se lance.
+3. Au premier démarrage : choisis ton nom et un mot de passe (il protège tes données).
+4. Tes données sont **conservées** d'une session à l'autre (stockées dans `%APPDATA%\Life Manager`).
+5. La taille et la position de la fenêtre sont mémorisées.
 
-Dans Supabase : **SQL Editor** → colle et exécute le script ci-dessous.
+> ℹ️ Windows peut afficher « Éditeur inconnu » au premier lancement (l'app n'est pas signée
+> commercialement). Clique sur « Plus d'infos » → « Exécuter quand même ».
 
-```sql
--- Événements (agenda : dates réelles)
-create table if not exists public.events (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  title text not null,
-  start_at timestamptz not null,
-  end_at timestamptz,
-  all_day boolean not null default false,
-  created_at timestamptz not null default now()
-);
+### 🌐 Version web (code source)
 
--- Tâches (to-do)
-create table if not exists public.todos (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  title text not null,
-  done boolean not null default false,
-  priority text not null default 'medium',
-  created_at timestamptz not null default now()
-);
+Télécharge `life-manager-web.zip`, décompresse, puis :
 
--- Sécurité : chaque utilisateur ne voit que ses propres données
-alter table public.events enable row level security;
-alter table public.todos enable row level security;
+```bash
+# Option 1 : serveur statique simple (recommandé)
+python -m http.server 8080
+# puis ouvre http://localhost:8080
 
-create policy "events_own" on public.events
-  for all using (auth.uid() = user_id);
-
-create policy "todos_own" on public.todos
-  for all using (auth.uid() = user_id);
-
--- Activités récurrentes de l'emploi du temps (une semaine type, sans date)
-create table if not exists public.timetable_activities (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  title text not null,
-  description text not null default '',
-  day_of_week int not null,          -- 0 = Lundi ... 6 = Dimanche
-  start_time time not null,
-  end_time time not null,
-  created_at timestamptz not null default now()
-);
-
--- Annulations ponctuelles, liées à une semaine précise
-create table if not exists public.timetable_cancellations (
-  id uuid primary key default gen_random_uuid(),
-  activity_id uuid not null references public.timetable_activities(id) on delete cascade,
-  week_start date not null,          -- lundi de la semaine concernée
-  created_at timestamptz not null default now(),
-  unique (activity_id, week_start)
-);
-
-alter table public.timetable_activities enable row level security;
-alter table public.timetable_cancellations enable row level security;
-
-create policy "tt_activities_own" on public.timetable_activities
-  for all using (auth.uid() = user_id);
-
-create policy "tt_cancellations_own" on public.timetable_cancellations
-  for all using (exists (
-    select 1 from public.timetable_activities a
-    where a.id = timetable_cancellations.activity_id
-    and a.user_id = auth.uid()
-  ));
+# Option 2 : n'importe quel serveur statique (VS Code Live Server, etc.)
 ```
 
-### Nouveau : réglages de l'emploi du temps (découpage 30/60 min)
+> ⚠️ Pour le bon fonctionnement complet (API YouTube, géolocalisation, actualités),
+> sert le dossier via un serveur HTTP local plutôt que d'ouvrir `index.html` en direct.
 
-Si tu as déjà exécuté le script précédent, exécute **ce bloc séparément**
-(il est protégé : il peut être relancé sans erreur) :
+---
 
-```sql
--- Réglages de l'emploi du temps (découpage horaire, synchronisé)
-create table if not exists public.timetable_settings (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  slot_min int not null default 60,   -- 30 ou 60 minutes par case
-  created_at timestamptz not null default now()
-);
+## 🔑 Clé API YouTube (optionnelle)
 
-alter table public.timetable_settings enable row level security;
+L'onglet YouTube utilise l'**API YouTube Data v3** (lecture seule, gratuite) :
 
-drop policy if exists "tt_settings_own" on public.timetable_settings;
-create policy "tt_settings_own" on public.timetable_settings
-  for all using (auth.uid() = user_id);
+1. Va sur <https://console.cloud.google.com/apis/library/youtube.googleapis.com> et active l'API.
+2. **Identifiants** → **Créer des identifiants** → **Clé API**.
+3. Colle la clé dans l'onglet YouTube de l'application (bouton ❓ Aide pour le détail).
+
+Sans clé, les onglets Tendances/Recherche/Chaîne ne fonctionneront pas ; le reste de l'app est indépendant.
+
+---
+
+## 🛠 Développer
+
+Le code source est organisé en deux dossiers :
+
+```
+Life Manager/     ← l'application web (HTML/CSS/JS purs, aucune dépendance)
+desktop/          ← le wrapper Electron (transforme la web en .exe)
 ```
 
-### Nouveau : date limite des tâches (To-Do)
+### Version web
 
-Si ta table `todos` vient du premier script, ajoute la colonne **date limite**
-en exécutant ce bloc (réexécutable sans erreur) :
+Aucune dépendance à installer : tout est en HTML/CSS/JS natif. Ouvre avec un serveur statique.
 
-```sql
--- Ajoute une date limite optionnelle aux tâches
-alter table public.todos add column if not exists due_date date;
+### Version exe (Electron)
+
+```bash
+cd desktop
+npm install
+npm start          # lance l'app en développement
+npm run dist       # génère l'installateur NSIS dans dist/
 ```
 
-## Fonctionnalités de l'emploi du temps
+---
 
-- Grille **Lundi → Dimanche × 07:00 → 22:00**, découpée en cases de **30 ou
-  60 minutes** (choix à la création, modifiable ensuite en mode édition,
-  sauvegardé dans Supabase).
-- **Jusqu'à 3 activités par case**, affichées côte à côte avec une couleur
-  automatique (6 teintes, lisibles en clair et en sombre).
-- **Mode lecture** : consultation seule + annulation/réactivation d'une
-  activité pour la semaine. **Mode édition** : bannière visible, cases
-  cliquables, ajout / modification / suppression.
-- Les activités annulées pour la semaine sont grisées et barrées, puis
-  réapparaissent automatiquement la semaine suivante.
+## 🔐 Sécurité
 
-## 3. Héberger sur GitHub Pages
+- **Chiffrement** : toutes les données sont chiffrées en AES-256-GCM, clé dérivée du
+  mot de passe via PBKDF2 (600 000 itérations).
+- **Coffre de mots de passe** : protégé par un mot de passe fort (12 caractères min,
+  majuscule/minuscule/chiffre/symbole, sans mot du dictionnaire).
+- **Stockage 100 % local** : `localStorage` (navigateur) ou `%APPDATA%` (exe).
+- Sans le mot de passe, les données sont **irrécupérables** (clé jamais stockée).
 
-1. Crée un dépôt GitHub (ex. `life-manager`) et pousse ces fichiers :
-   `index.html`, `style.css`, `app.js`, `supabase-config.js`, `README.md`.
-2. Dans le dépôt : **Settings > Pages** → Source : `main` (ou `master`), dossier `/ (root)` → Enregistrer.
-3. Le site sera disponible sur :
-   `https://TON-USERNAME.github.io/life-manager/`
+---
 
+## 📄 Licence
 
-
-### Nouveau : Projets
-
-
-
-> Ne commite jamais ta clé **service_role** (secrète). La clé `anon` publique
-> est la seule à mettre dans `supabase-config.js`.
+MIT — libre d'utilisation, de modification et de redistribution.
