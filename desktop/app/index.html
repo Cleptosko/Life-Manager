@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Life Manager</title>  <link rel="icon" type="image/png" href="logo.png">
-<link rel="stylesheet" href="style.css?v=20260827ak">
-<script defer src="app.js?v=20260827upg"></script>
+<link rel="stylesheet" href="style.css?v=20260828g">
+<script defer src="app.js?v=20260828g"></script>
 </head>
 <body>
 
@@ -61,65 +61,73 @@
           <h2 id="dash-greeting">Bonjour</h2>
           <p class="page-sub"><span id="dash-date"></span> · <span id="dash-clock"></span></p>
         </div>
+        <div class="page-actions">
+          <button id="dash-customize" class="btn-ghost hidden" type="button" title="Configurer les widgets du tableau de bord">🎨 Personnaliser</button>
+        </div>
       </header>
 
-      <div class="dash-layout">
+      <div id="dash-empty" class="dash-empty hidden">
+        <div class="dash-empty-icon">🧩</div>
+        <h3>Ton tableau de bord est vide</h3>
+        <p>Ajoute des widgets pour voir tes événements, tes tâches, les actualités, ta chaîne YouTube et plus encore.</p>
+        <button id="dash-empty-customize" class="btn-primary" type="button">🎨 Personnaliser mon tableau de bord</button>
+      </div>
+
+      <div class="dash-layout" id="dash-layout">
         <div class="dash-main">
-          <div class="cards">
-            <div class="stat-card">
+          <div class="cards" id="dash-stats">
+            <div class="stat-card" data-module="agenda">
               <span class="stat-num" id="dash-event-today">0</span>
               <span class="stat-label">Événement(s) aujourd'hui</span>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" data-module="todos">
               <span class="stat-num" id="dash-todo-pending">0</span>
               <span class="stat-label">Tâche(s) en attente</span>
             </div>
-            <div class="stat-card">
-              <span class="stat-num" id="dash-week">—</span>
-              <span class="stat-label">Semaine en cours</span>
-            </div>
-            <div class="stat-card">
+            <div class="stat-card" data-module="timetable">
               <span class="stat-num" id="dash-course-today">0</span>
               <span class="stat-label">Activité(s) aujourd'hui</span>
             </div>
-            <div class="stat-card weather-card" id="dash-weather">
+            <div class="stat-card weather-card" id="dash-weather" data-module="weather">
               <span class="stat-label">Météo</span>
               <div class="weather-now" id="weather-now">
                 <span class="weather-loading">Chargement…</span>
               </div>
             </div>
-            <div class="stat-card dash-yt-mini hidden" id="dash-yt-mini">
-              <span class="stat-label">Ma chaîne</span>
-              <div class="dash-yt-mini-body" id="dash-yt-mini-body"></div>
-            </div>
-            <div class="stat-card wide">
+            <div class="stat-card wide" data-module="agenda">
               <span class="stat-label">Prochain événement</span>
               <span class="stat-next" id="dash-next-event">—</span>
             </div>
           </div>
 
-          <div class="dash-cols">
-            <div class="panel">
+          <div class="stat-card dash-yt-mini hidden" id="dash-yt-mini">
+            <span class="stat-label">Ma chaîne</span>
+            <div class="dash-yt-mini-body" id="dash-yt-mini-body"></div>
+          </div>
+
+          <div class="dash-cols" id="dash-cols">
+            <div class="panel" id="dash-today-panel">
               <h3>Aujourd'hui</h3>
               <div id="dash-today-list" class="dash-list"></div>
             </div>
-            <div class="panel">
+            <div class="panel" id="dash-todos-panel">
               <h3>À faire</h3>
               <div id="dash-todos-list" class="dash-list"></div>
             </div>
           </div>
 
-          <div class="panel">
+          <div class="panel" id="dash-projects-panel">
             <h3>Projets en cours</h3>
             <div id="dash-projects-list" class="dash-projects-list"></div>
           </div>
         </div>
 
-        <aside class="panel news-panel">
+        <aside class="panel news-panel" id="dash-news-panel">
           <div class="news-head">
             <h3>📰 Actualités</h3>
             <select id="news-cat" title="Rubrique">
               <option value="top">À la une</option>
+              <option value="politique">Politique</option>
               <option value="tech">Technologie</option>
               <option value="sport">Sport</option>
               <option value="sante">Santé</option>
@@ -382,6 +390,15 @@
           </div>
         </div>
         <div class="panel opt-panel">
+          <h3>🧩 Fonctionnalités</h3>
+          <p class="opt-hint">Active ou désactive les fonctionnalités de l'application. Les onglets correspondants sont masqués, et les widgets du tableau de bord sont filtrés.</p>
+          <div class="feat-grid" id="opt-features"></div>
+          <div class="opt-actions">
+            <button id="opt-save-features" class="btn-primary" type="button">Enregistrer les fonctionnalités</button>
+            <span id="opt-features-msg" class="opt-msg"></span>
+          </div>
+        </div>
+        <div class="panel opt-panel">
           <h3>🔒 Changer le mot de passe</h3>
           <p class="opt-hint">Modifie ton mot de passe d'accès à l'application.</p>
           <label class="field"><span>Mot de passe actuel</span><input id="opt-old-pw" type="password" autocomplete="current-password" placeholder="••••••••"></label>
@@ -619,6 +636,56 @@
 
 <!-- ===== Modale confirmation mot de passe (vider le coffre) ===== -->
 <!-- ===== Modale renforcement du mot de passe (accès au coffre) ===== -->
+<!-- ===== Modale configuration météo (première visite) ===== -->
+<div class="modal-overlay" id="modal-weather-setup">
+  <div class="modal">
+    <button class="modal-x" id="wset-close" type="button" title="Fermer">✕</button>
+    <div class="modal-head"><h3>🌦 Configure ta météo</h3></div>
+    <div class="modal-body">
+      <p class="opt-hint">Choisis comment obtenir la météo. Tu pourras changer de ville à tout moment dans l'onglet Météo.</p>
+      <button id="wset-geo" class="btn-primary btn-block" type="button">📍 Utiliser ma position (temporaire)</button>
+      <div class="wset-divider"><span>ou</span></div>
+      <label class="field"><span>Nom d'une ville</span>
+        <input class="field-input" id="wset-city" type="text" placeholder="Ex. Paris, Lyon, Bruxelles…" autocomplete="off">
+      </label>
+      <button id="wset-city-btn" class="btn-ghost btn-block" type="button">🔍 Valider la ville</button>
+      <p class="opt-msg" id="wset-msg"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modale d'onboarding (premier lancement) ===== -->
+<div class="modal-overlay" id="modal-onboarding">
+  <div class="modal modal-wider">
+    <div class="modal-head"><h3>👋 Bienvenue dans Life Manager !</h3></div>
+    <div class="modal-body">
+      <p class="opt-hint">Quelles fonctionnalités veux-tu activer ? Tu pourras les modifier à tout moment dans les <b>Paramètres ⚙️</b>.</p>
+      <div class="feat-grid" id="onb-list"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="spacer"></span>
+      <button id="onb-start" class="btn-primary" type="button">Commencer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modale widgets du tableau de bord ===== -->
+<div class="modal-overlay" id="modal-widgets">
+  <div class="modal modal-wider">
+    <button class="modal-x" id="wgt-close" type="button" title="Fermer">✕</button>
+    <div class="modal-head"><h3>🎨 Personnaliser le tableau de bord</h3></div>
+    <div class="modal-body">
+      <p class="opt-hint">Choisis les widgets à afficher. Seuls les widgets des fonctionnalités activées sont proposés.</p>
+      <div class="feat-grid" id="wgt-list"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="spacer"></span>
+      <button id="wgt-cancel" class="btn-ghost" type="button">Annuler</button>
+      <button id="wgt-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-pw-upgrade">
   <div class="modal">
     <button class="modal-x" id="pwu-close" type="button" title="Fermer">✕</button>

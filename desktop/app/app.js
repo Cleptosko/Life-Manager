@@ -9,6 +9,7 @@ let ttCancellations = [];    // annulations ponctuelles (par semaine)
 let ttSettings = null;       // null = emploi du temps pas encore créé ; sinon { slot_min }
 let weatherCache = null;      // { lat, lon, city, current, daily, fetchedAt }
 let weatherCity = null;       // ville manuelle
+let weatherGeo = false;       // true si l'utilisateur a choisi la géolocalisation
 let projects = [];
 let projectTasks = [];
 let projectNotes = [];
@@ -85,6 +86,7 @@ function activeTimetableForDay(dayIndex) {
 /* ===================== Backend (Supabase ou démo) ===================== */
 const LS_WEATHER = "lm_weather";
 const LS_WEATHER_CITY = "lm_weather_city";
+const LS_WEATHER_GEO = "lm_weather_geo";
 
 function lsGet(k, fallback) {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
@@ -110,6 +112,8 @@ const LS_SALT     = "lm_salt";
 const LS_CHECK    = "lm_check";
 const LS_THEME    = "lm_theme";
 const LS_PW_STRONG = "lm_pw_strong"; // "1" si le mot de passe maître est fort, "0" sinon
+const LS_FEATURES   = "lm_features";        // fonctionnalités activées (JSON array), absent = toutes
+const LS_DASH_WIDGETS = "lm_dash_widgets";  // widgets du tableau de bord (JSON array), absent = tous
 
 /* ===================== Chiffrement des données (AES-256-GCM + PBKDF2) =====================
    Toutes les données applicatives sont chiffrées dans localStorage. La clé AES est dérivée
@@ -119,7 +123,7 @@ const LS_PW_STRONG = "lm_pw_strong"; // "1" si le mot de passe maître est fort,
 ============================================================================= */
 const ENC_PREFIX = "ENC1:";
 // Clés stockées en clair (nécessaires avant la connexion, non sensibles)
-const VAULT_PLAIN_KEYS = new Set([LS_SALT, LS_SESSION, LS_USERNAME, LS_THEME, LS_PW_STRONG]);
+const VAULT_PLAIN_KEYS = new Set([LS_SALT, LS_SESSION, LS_USERNAME, LS_THEME, LS_PW_STRONG, LS_FEATURES, LS_DASH_WIDGETS]);
 
 let vaultKey = null;          // CryptoKey AES-GCM en mémoire (jamais persistée)
 const vaultCache = new Map(); // valeurs déchiffrées de la session
@@ -528,6 +532,8 @@ async function handleLogin(e) {
       lsSet(LS_USERNAME, name);
       if (session) session.username = name;
       await setupVault(pw);
+      // Nouveau compte : le tableau de bord démarre vide (personnalisation)
+      _rawSet(LS_DASH_WIDGETS, "[]");
       localStorage.setItem(LS_SESSION, "1");
       await enterApp();
     } else {
@@ -555,9 +561,23 @@ async function enterApp() {
   await API.loadProjectNotes();
   loadWeatherCache();
   newsCache = lsGet(LS_NEWS, null);
+  if (newsCache && newsCache.cat) newsCat = newsCache.cat;
+  $("#news-cat").value = newsCat;
   fetchWeather(false);
+  // Le widget Actualités est un widget de base, indépendant des modules.
   loadNews(false);
-  navigate("dashboard");
+  if (_rawGet(LS_FEATURES) === null) {
+    // Premier lancement : on masque la navigation tant que l'onboarding n'est pas validé
+    FEATURES.forEach((f) => {
+      const n = f.page ? $("#nav-" + f.page) : null;
+      if (n) n.classList.add("hidden");
+    });
+    navigate("dashboard");
+    openOnboarding();
+  } else {
+    applyFeatureFlags();
+    navigate("dashboard");
+  }
 }
 
 function showAuth() {
@@ -573,8 +593,33 @@ function renderOptions() {
   if (input) input.value = name === "Moi" ? "" : name;
   clearOptMsg("name");
   clearOptMsg("pw");
+  clearOptMsg("features");
   var o = $("#opt-old-pw"), n = $("#opt-new-pw"), c = $("#opt-new-pw2");
   if (o) o.value = ""; if (n) n.value = ""; if (c) c.value = "";
+  // Panneau fonctionnalités
+  var box = $("#opt-features");
+  if (box) {
+    const base = FEATURES.filter((f) => f.base);
+    const extra = FEATURES.filter((f) => !f.base);
+    box.innerHTML =
+      '<div class="feat-group-title">✅ Modules de base</div>' +
+      base.map((f) => featItemHtml(f, "feat-check", featureEnabled(f.id))).join("") +
+      '<div class="feat-group-title">➕ Modules en plus</div>' +
+      extra.map((f) => featItemHtml(f, "feat-check", featureEnabled(f.id))).join("");
+  }
+}
+
+function saveOptFeatures() {
+  const list = Array.from($$(".feat-check")).filter((c) => c.checked).map((c) => c.value);
+  setFeatures(list);
+  setOptMsg("features", "Fonctionnalités enregistrées ✓");
+  // Si la page courante correspond à une fonctionnalité désactivée → retour au tableau de bord
+  const curFeat = featureForPage(currentPage);
+  if (curFeat && !featureEnabled(curFeat.id)) {
+    navigate("dashboard");
+  } else if (currentPage === "dashboard") {
+    renderDashboard();
+  }
 }
 
 function clearOptMsg(kind) {
@@ -615,19 +660,167 @@ async function saveOptPassword() {
   setOptMsg("pw", "Mot de passe modifié ✓");
 }
 
+/* ===================== Personnalisation : fonctionnalités + widgets ===================== */
+const FEATURES = [
+  { id: "agenda",    page: "schedule", icon: "🗓", label: "Agenda",          desc: "Événements, rendez-vous, calendrier", base: true },
+  { id: "timetable", page: "timetable", icon: "🏫", label: "Emploi du temps", desc: "Grille hebdomadaire de cours", base: true },
+  { id: "todos",     page: "todos",     icon: "✅", label: "To-Do List",      desc: "Tâches et liste à faire" },
+  { id: "weather",   page: "weather",   icon: "🌦", label: "Météo",           desc: "Prévisions et météo du jour" },
+  { id: "youtube",   page: "youtube",   icon: "▶️", label: "YouTube",         desc: "Recherche, tendances, dashboard de chaîne" },
+  { id: "projects",  page: "projects",  icon: "📁", label: "Projets",         desc: "Suivi de projets et avancement" },
+  { id: "passwords", page: "passwords", icon: "🔑", label: "Mots de passe",   desc: "Coffre chiffré de mots de passe" },
+];
+
+function featureForPage(page) {
+  return FEATURES.find((f) => f.page === page);
+}
+
+const DASH_WIDGETS = [
+  { id: "agenda",    icon: "🗓", label: "Agenda",             desc: "Événements du jour, prochain événement", module: "agenda" },
+  { id: "timetable", icon: "🏫", label: "Emploi du temps",    desc: "Activités du jour", module: "timetable" },
+  { id: "todos",     icon: "✅", label: "To-Do List",         desc: "Tâches en attente", module: "todos" },
+  { id: "weather",   icon: "🌦", label: "Météo",              desc: "Météo du jour", module: "weather" },
+  { id: "yt",        icon: "▶️", label: "Ma chaîne YouTube", desc: "Récap de la chaîne (abonnés…)", module: "youtube" },
+  { id: "projects",  icon: "📁", label: "Projets en cours",   desc: "Récap de l'avancement des projets", module: "projects" },
+  { id: "news",      icon: "📰", label: "Actualités",         desc: "Fil d'actualités", base: true }
+];
+
+function featureEnabled(id) {
+  const raw = _rawGet(LS_FEATURES);
+  if (raw === null) {
+    // Défaut : uniquement les modules de base (l'utilisateur choisit le reste)
+    const f = FEATURES.find((x) => x.id === id);
+    return !!(f && f.base);
+  }
+  try { return JSON.parse(raw).indexOf(id) !== -1; } catch (e) { return false; }
+}
+
+function setFeatures(list) {
+  _rawSet(LS_FEATURES, JSON.stringify(list));
+  applyFeatureFlags();
+}
+
+function applyFeatureFlags() {
+  FEATURES.forEach((f) => {
+    const nav = f.page ? $("#nav-" + f.page) : null;
+    if (nav) nav.classList.toggle("hidden", !featureEnabled(f.id));
+  });
+}
+
+function getDashWidgets() {
+  const raw = _rawGet(LS_DASH_WIDGETS);
+  if (raw === null) {
+    // Défaut : uniquement les widgets des modules de base (le reste se coche dans la personnalisation)
+    return DASH_WIDGETS.filter((w) => w.module === "agenda" || w.module === "timetable" || w.base).map((w) => w.id);
+  }
+  try {
+    return JSON.parse(raw).filter((id) => DASH_WIDGETS.some((w) => w.id === id));
+  } catch (e) { return []; }
+}
+
+function setDashWidgets(list) {
+  _rawSet(LS_DASH_WIDGETS, JSON.stringify(list));
+}
+
+function widgetAvailable(w) {
+  return !!w.base || featureEnabled(w.module);
+}
+
+function activeDashWidgets() {
+  return getDashWidgets().filter((id) => {
+    const w = DASH_WIDGETS.find((x) => x.id === id);
+    return w && widgetAvailable(w);
+  });
+}
+
+function featItemHtml(f, cls, checked) {
+  return '<label class="feat-item">' +
+    '<input type="checkbox" class="' + cls + '" value="' + f.id + '"' + (checked ? " checked" : "") + '>' +
+    '<span class="feat-icon">' + f.icon + '</span>' +
+    '<span class="feat-txt"><b>' + f.label + '</b><small>' + f.desc + '</small></span>' +
+  '</label>';
+}
+
+/* --- Modale d'onboarding (premier lancement) --- */
+function openOnboarding() {
+  const m = $("#modal-onboarding");
+  const box = $("#onb-list");
+  if (!m || !box) return;
+  const base = FEATURES.filter((f) => f.base);
+  const extra = FEATURES.filter((f) => !f.base);
+  box.innerHTML =
+    '<div class="feat-group-title">✅ Modules de base</div>' +
+    base.map((f) => featItemHtml(f, "onb-check", true)).join("") +
+    '<div class="feat-group-title">➕ Modules en plus</div>' +
+    extra.map((f) => featItemHtml(f, "onb-check", false)).join("");
+  m.classList.add("open");
+}
+
+function closeOnboarding() {
+  const m = $("#modal-onboarding");
+  if (m) m.classList.remove("open");
+}
+
+function saveOnboarding() {
+  const list = Array.from($$(".onb-check")).filter((c) => c.checked).map((c) => c.value);
+  setFeatures(list);
+  closeOnboarding();
+  renderDashboard();
+}
+
+/* --- Modale widgets du tableau de bord --- */
+function openWidgetModal() {
+  const m = $("#modal-widgets");
+  const box = $("#wgt-list");
+  if (!m || !box) return;
+  const cur = getDashWidgets();
+  const base = DASH_WIDGETS.filter((w) => w.base);
+  const modules = DASH_WIDGETS.filter((w) => !w.base && widgetAvailable(w));
+  const item = (w) => '<label class="feat-item">' +
+    '<input type="checkbox" class="wgt-check" value="' + w.id + '"' + (cur.indexOf(w.id) !== -1 ? " checked" : "") + '>' +
+    '<span class="feat-icon">' + w.icon + '</span>' +
+    '<span class="feat-txt"><b>' + w.label + '</b><small>' + w.desc + '</small></span>' +
+  '</label>';
+  box.innerHTML =
+    '<div class="feat-group-title">⭐ Widgets de base</div>' + base.map(item).join("") +
+    '<div class="feat-group-title">🧩 Widgets liés aux modules</div>' +
+    (modules.length ? modules.map(item).join("") : '<p class="empty">Active d’abord un module dans les paramètres.</p>');
+  m.classList.add("open");
+}
+
+function closeWidgetModal() {
+  const m = $("#modal-widgets");
+  if (m) m.classList.remove("open");
+}
+
+function saveWidgets() {
+  const list = Array.from($$(".wgt-check")).filter((c) => c.checked).map((c) => c.value);
+  setDashWidgets(list);
+  closeWidgetModal();
+  renderDashboard();
+}
+
 /* ===================== Navigation ===================== */
 const PAGES = ["dashboard", "schedule", "timetable", "todos", "weather", "youtube", "projects", "passwords", "options"];
 const ACCENTS = { dashboard: "green", schedule: "blue", timetable: "violet", todos: "yellow", weather: "cyan", youtube: "red", projects: "green", passwords: "cyan", options: "green" };
 
 let pwUpgradeDone = false; // true juste après un renforcement réussi (évite la ré-ouverture)
+let currentPage = "dashboard";
 
 function navigate(page) {
+  if (!PAGES.includes(page)) page = "dashboard";
   // Accès au coffre : exige un mot de passe fort (sauf juste après renforcement)
   if (page === "passwords" && !pwUpgradeDone && _rawGet(LS_PW_STRONG) !== "1") {
     openPwUpgrade();
     return;
   }
+  // Page d'une fonctionnalité désactivée → retour au tableau de bord
+  const feat = featureForPage(page);
+  if (feat && !featureEnabled(feat.id)) {
+    page = "dashboard";
+  }
   pwUpgradeDone = false;
+  currentPage = page;
   PAGES.forEach((p) => {
     var pg = $("#page-" + p); if (pg) pg.classList.toggle("hidden", p !== page);
     var navEl = $("#nav-" + p); if (navEl) navEl.classList.toggle("active", p === page);
@@ -637,7 +830,7 @@ function navigate(page) {
   if (page === "schedule") renderSchedule();
   if (page === "timetable") renderTimetable();
   if (page === "todos") renderTodos();
-  if (page === "weather") renderWeatherPage();
+  if (page === "weather") { renderWeatherPage(); maybeOpenWeatherSetup(); }
   if (page === "youtube") renderYouTubePage();
   if (page === "projects") renderProjects();
   if (page === "passwords") renderPasswords();
@@ -989,7 +1182,6 @@ function renderDashboard() {
   const now = new Date();
   $("#dash-greeting").textContent = "Bonjour, " + session.username + " 👋";
   $("#dash-date").textContent = fmtDateLong(now);
-  $("#dash-week").textContent = "Semaine " + isoWeek(now);
 
   const todayKey = dayKey(now);
   const todayEvents = events.filter((e) => eventDayKey(e) === todayKey)
@@ -1029,13 +1221,55 @@ function renderDashboard() {
   renderWeatherDashboard();
   renderDashboardProjects();
   renderYtDashChannel();
-  loadNews(false);
+
+  /* ---- Widgets : visibilité + état vide ---- */
+  const widgets = activeDashWidgets();
+  const hasWidgets = widgets.length > 0;
+  const dashEmpty = $("#dash-empty"), dashLayout = $("#dash-layout");
+  if (dashEmpty) dashEmpty.classList.toggle("hidden", hasWidgets);
+  if (dashLayout) dashLayout.classList.toggle("hidden", !hasWidgets);
+  const cust = $("#dash-customize");
+  if (cust) cust.classList.toggle("hidden", !hasWidgets);
+  if (!hasWidgets) return;
+
+  // Widgets liés aux modules : chaque carte/panneau dépend de son widget coché
+  // (activer un module dans les Paramètres ne suffit pas : il faut aussi cocher son widget)
+  $$("#dash-stats .stat-card[data-module]").forEach((c) => {
+    c.classList.toggle("hidden", widgets.indexOf(c.dataset.module) === -1);
+  });
+  // Masque la rangée si aucune carte n'est visible
+  const statsEl = $("#dash-stats");
+  if (statsEl) {
+    const anyVisible = Array.from(statsEl.querySelectorAll(".stat-card")).some((c) => !c.classList.contains("hidden"));
+    statsEl.classList.toggle("hidden", !anyVisible);
+  }
+
+  // Panneau « Aujourd'hui » : widget Agenda OU Emploi du temps
+  const todayW = widgets.indexOf("agenda") !== -1 || widgets.indexOf("timetable") !== -1;
+  const todosW = widgets.indexOf("todos") !== -1;
+  const todayP = $("#dash-today-panel"), todosP = $("#dash-todos-panel");
+  if (todayP) todayP.classList.toggle("hidden", !todayW);
+  if (todosP) todosP.classList.toggle("hidden", !todosW);
+  const cols = $("#dash-cols");
+  if (cols) cols.classList.toggle("one", todayW !== todosW);
+
+  // Projets
+  const projP = $("#dash-projects-panel");
+  if (projP) projP.classList.toggle("hidden", widgets.indexOf("projects") === -1);
+
+  // Actualités
+  const news = widgets.indexOf("news") !== -1;
+  const newsP = $("#dash-news-panel");
+  if (newsP) newsP.classList.toggle("hidden", !news);
+  if (dashLayout) dashLayout.classList.toggle("no-news", !news);
+  if (news) loadNews(false);
 }
 
 function renderYtDashChannel() {
   const card = $("#dash-yt-mini");
   const body = $("#dash-yt-mini-body");
   if (!card || !body) return;
+  if (!featureEnabled("youtube") || activeDashWidgets().indexOf("yt") === -1) { card.classList.add("hidden"); return; }
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(LS_YT_DASH_CHANNEL) || "null"); } catch (e) {}
   if (!cached || (!cached.name && !cached.subs)) { card.classList.add("hidden"); return; }
@@ -1728,6 +1962,7 @@ function previousDayKey(d) { return dayKey(addDays(new Date(d.getFullYear(), d.g
 function loadWeatherCache() {
   weatherCache = lsGet(LS_WEATHER + "_" + session.userId, null);
   weatherCity = lsGet(LS_WEATHER_CITY + "_" + session.userId, null);
+  weatherGeo = lsGet(LS_WEATHER_GEO + "_" + session.userId, false);
 }
 function saveWeatherCache(data) {
   if (!session) return;
@@ -1959,6 +2194,60 @@ async function searchWeatherCity() {
   const city = input.value.trim();
   if (!city) return;
   weatherCity = city;
+  weatherGeo = false;
+  lsSet(LS_WEATHER_GEO + "_" + session.userId, false);
+  await fetchWeather(true);
+  renderWeatherPage();
+  renderWeatherDashboard();
+}
+
+/* --- Modale de configuration météo (première visite) --- */
+function maybeOpenWeatherSetup() {
+  const m = $("#modal-weather-setup");
+  if (!m) return;
+  if (weatherCity || weatherGeo) return; // déjà configuré
+  const msg = $("#wset-msg");
+  if (msg) { msg.textContent = ""; msg.className = "opt-msg"; }
+  const input = $("#wset-city");
+  if (input) input.value = "";
+  m.classList.add("open");
+  if (input) input.focus();
+}
+
+function closeWeatherSetup() {
+  const m = $("#modal-weather-setup");
+  if (m) m.classList.remove("open");
+}
+
+function useWeatherGeo() {
+  const msg = $("#wset-msg");
+  if (msg) { msg.textContent = "Recherche de ta position…"; msg.className = "opt-msg"; }
+  navigator.geolocation.getCurrentPosition(
+    async () => {
+      weatherGeo = true;
+      lsSet(LS_WEATHER_GEO + "_" + session.userId, true);
+      closeWeatherSetup();
+      await fetchWeather(true);
+      renderWeatherPage();
+      renderWeatherDashboard();
+    },
+    () => {
+      if (msg) { msg.textContent = "Localisation refusée ou indisponible. Entre une ville ci-dessous."; msg.className = "opt-msg opt-msg-error"; }
+    },
+    { timeout: 8000 }
+  );
+}
+
+async function wsetSetCity() {
+  const input = $("#wset-city");
+  const city = input.value.trim();
+  const msg = $("#wset-msg");
+  if (!city) { if (msg) { msg.textContent = "Entre le nom d'une ville."; msg.className = "opt-msg opt-msg-error"; } return; }
+  weatherCity = city;
+  weatherGeo = false;
+  lsSet(LS_WEATHER_CITY + "_" + session.userId, city);
+  lsSet(LS_WEATHER_GEO + "_" + session.userId, false);
+  closeWeatherSetup();
   await fetchWeather(true);
   renderWeatherPage();
   renderWeatherDashboard();
@@ -2377,6 +2666,7 @@ async function saveProjectDesc() {
 /* ===================== Actualités (Google News RSS) ===================== */
 const NEWS_CATS = {
   top: { label: "À la une", url: "https://www.francetvinfo.fr/titres.rss" },
+  politique: { label: "Politique", url: "https://www.lemonde.fr/politique/rss_full.xml" },
   tech: { label: "Technologie", url: "https://www.numerama.com/feed/" },
   sport: { label: "Sport", url: "https://www.lemonde.fr/sport/rss_full.xml" },
   sante: { label: "Santé", url: "https://www.lemonde.fr/sante/rss_full.xml" },
@@ -2385,6 +2675,8 @@ const NEWS_CATS = {
 };
 const LS_NEWS = "lm_news_cache_v2";
 let newsCache = null;
+let newsCat = "top";    // catégorie courante (partagée widget + page)
+let newsSearch = "";    // réservé au filtre interne éventuel du widget
 
 function newsUrl(cat) {
   const c = NEWS_CATS[cat] || NEWS_CATS.top;
@@ -2398,12 +2690,15 @@ const NEWS_PROXIES = [
 function parseNewsXML(xml) {
   try {
     const doc = new DOMParser().parseFromString(xml, "text/xml");
-    const items = [...doc.querySelectorAll("item")].slice(0, 15).map((it) => {
+    const items = [...doc.querySelectorAll("item")].slice(0, 50).map((it) => {
       const srcEl = it.querySelector("source");
       const enc = it.querySelector("enclosure");
       const media = it.querySelector("media\:thumbnail, thumbnail");
+      const desc = (it.querySelector("description") || {}).textContent || "";
+      const mImg = desc.match(/<img[^>]+src=["']([^"']+)["']/i);
       const img = (enc && enc.getAttribute && enc.getAttribute("url")) ||
-        (media && media.getAttribute && media.getAttribute("url")) || "";
+        (media && media.getAttribute && media.getAttribute("url")) ||
+        (mImg && mImg[1]) || "";
       return {
         title: (it.querySelector("title") || {}).textContent?.trim() || "",
         link: (it.querySelector("link") || {}).textContent?.trim() || "",
@@ -2437,7 +2732,7 @@ async function fetchNewsJSON(url) {
   if (!res.ok) throw new Error("HTTP " + res.status);
   const data = await res.json();
   if (data.status !== "ok" || !data.items || !data.items.length) throw new Error("Aucun article");
-  return data.items.slice(0, 15).map((it) => {
+  return data.items.slice(0, 50).map((it) => {
     const { title, source } = splitNewsTitle(it.title || "");
     return {
       title,
@@ -2458,45 +2753,69 @@ function newsCacheValid() {
   return newsCache && newsCache.fetchedAt && (Date.now() - newsCache.fetchedAt < 30 * 60 * 1000);
 }
 
+function setNewsCat(cat) {
+  newsCat = cat || "top";
+  // Synchronise les deux sélecteurs (widget tableau de bord + page)
+  const dashboardSelect = $("#news-cat");
+  if (dashboardSelect) dashboardSelect.value = newsCat;
+  loadNews(true);
+}
+
 async function loadNews(force) {
-  const catEl = $("#news-cat");
-  const cat = (catEl && catEl.value) || "top";
+  const cat = newsCat || "top";
   if (!force && newsCacheValid() && newsCache.cat === cat) { renderNews(); return; }
-  const listEl = $("#news-list");
-  if (listEl) listEl.innerHTML = "<p class='news-status'>Chargement des actualités…</p>";
-  let items = null;
-  try {
-    items = await fetchNewsJSON(newsUrl(cat));
-  } catch (e) {
-    try { items = await fetchNewsRSS(newsUrl(cat)); } catch (e2) { /* tout a échoué */ }
-  }
+  const lists = $$(".news-list");
+  lists.forEach((l) => { l.innerHTML = "<p class='news-status'>Chargement des actualités…</p>"; });
+  // Tente plusieurs sources en parallèle et fusionne les articles pour en remonter un maximum
+  const [fromJSON, fromRSS] = await Promise.all([
+    fetchNewsJSON(newsUrl(cat)).catch(() => null),
+    fetchNewsRSS(newsUrl(cat)).catch(() => null),
+  ]);
+  let items = mergeNewsItems([...((fromJSON || [])), ...((fromRSS || []))]);
   if (items && items.length) {
     newsCache = { cat, fetchedAt: Date.now(), items };
     lsSet(LS_NEWS, newsCache);
     renderNews();
-  } else if (listEl) {
-    listEl.innerHTML = "<p class='news-status error'>Impossible de charger les actualités. Vérifie ta connexion.</p>";
+  } else {
+    lists.forEach((l) => { l.innerHTML = "<p class='news-status error'>Impossible de charger les actualités. Vérifie ta connexion.</p>"; });
   }
 }
 
+function mergeNewsItems(arr) {
+  const seen = new Set();
+  const out = [];
+  for (const n of arr) {
+    if (!n || !n.title || !n.link) continue;
+    const key = n.link.trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(n);
+  }
+  return out.slice(0, 50);
+}
+
+function newsItemHtml(n) {
+  const d = n.pubDate ? new Date(n.pubDate) : null;
+  const t = d && !isNaN(d) ? d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
+  return "<a class='news-item' href='" + esc(n.link) + "' target='_blank' rel='noopener'>" +
+    "<span class='news-title'>" + esc(n.title) + "</span>" +
+    (n.img ? "<img class='news-img' src='" + esc(n.img) + "' alt='' loading='lazy'>" : "") +
+    "<span class='news-body'>" +
+      (n.source ? "<span class='news-src'>" + esc(n.source) + (t ? " · " + t : "") + "</span>" : "") +
+    "</span>" +
+    "</a>";
+}
+
 function renderNews() {
-  const listEl = $("#news-list");
-  if (!listEl) return;
+  const lists = $$(".news-list");
+  if (!lists.length) return;
   if (!newsCache || !newsCache.items || !newsCache.items.length) {
-    listEl.innerHTML = "<p class='news-status'>Aucune actualité pour le moment.</p>";
+    lists.forEach((l) => { l.innerHTML = "<p class='news-status'>Aucune actualité pour le moment.</p>"; });
     return;
   }
-  listEl.innerHTML = newsCache.items.map((n) => {
-    const d = n.pubDate ? new Date(n.pubDate) : null;
-    const t = d && !isNaN(d) ? d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
-    return "<a class='news-item' href='" + esc(n.link) + "' target='_blank' rel='noopener'>" +
-      "<span class='news-title'>" + esc(n.title) + "</span>" +
-      (n.img ? "<img class='news-img' src='" + esc(n.img) + "' alt='' loading='lazy'>" : "") +
-      "<span class='news-body'>" +
-        (n.source ? "<span class='news-src'>" + esc(n.source) + (t ? " · " + t : "") + "</span>" : "") +
-      "</span>" +
-      "</a>";
-  }).join("");
+  let items = newsCache.items;
+  const html = items.map(newsItemHtml).join("");
+  lists.forEach((l) => { l.innerHTML = html; });
 }
 
 /* ===================== YouTube (Data API v3, clé seule) ===================== */
@@ -3077,6 +3396,17 @@ $("#btn-theme").addEventListener("click", toggleTheme);
 $("#btn-settings").addEventListener("click", () => navigate("options"));
 $("#opt-save-name").addEventListener("click", saveOptName);
 $("#opt-save-pw").addEventListener("click", saveOptPassword);
+$("#opt-save-features").addEventListener("click", saveOptFeatures);
+
+/* Personnalisation du tableau de bord */
+$("#dash-customize").addEventListener("click", openWidgetModal);
+$("#dash-empty-customize").addEventListener("click", openWidgetModal);
+$("#wgt-close").addEventListener("click", closeWidgetModal);
+$("#wgt-cancel").addEventListener("click", closeWidgetModal);
+$("#wgt-save").addEventListener("click", saveWidgets);
+
+/* Onboarding premier lancement */
+$("#onb-start").addEventListener("click", saveOnboarding);
 
 $$(".cal-view-btn").forEach((b) => b.addEventListener("click", () => setCalView(b.dataset.view)));
 $("#cal-prev").addEventListener("click", calPrev);
@@ -3185,6 +3515,11 @@ $$(".tf").forEach((b) => b.addEventListener("click", () => {
 
 var wcb = $("#weather-city-btn"); if (wcb) wcb.addEventListener("click", searchWeatherCity);
 var wcs = $("#weather-city-search"); if (wcs) wcs.addEventListener("keydown", (e) => { if (e.key === "Enter") searchWeatherCity(); });
+/* Modale configuration météo */
+var wsetClose = $("#wset-close"); if (wsetClose) wsetClose.addEventListener("click", closeWeatherSetup);
+var wsetGeo = $("#wset-geo"); if (wsetGeo) wsetGeo.addEventListener("click", useWeatherGeo);
+var wsetCityBtn = $("#wset-city-btn"); if (wsetCityBtn) wsetCityBtn.addEventListener("click", wsetSetCity);
+var wsetCity = $("#wset-city"); if (wsetCity) wsetCity.addEventListener("keydown", (e) => { if (e.key === "Enter") wsetSetCity(); });
 
 /* Projets */
 var pn = $("#proj-new"); if (pn) pn.addEventListener("click", () => openProjectModal(null));
@@ -3251,8 +3586,11 @@ var dytmini = $("#dash-yt-mini"); if (dytmini) dytmini.addEventListener("click",
 });
 
 /* Actualités */
-var nc = $("#news-cat"); if (nc) nc.addEventListener("change", () => loadNews(true));
+var nc = $("#news-cat"); if (nc) nc.addEventListener("change", () => setNewsCat(nc.value));
 var nr = $("#news-refresh"); if (nr) nr.addEventListener("click", () => loadNews(true));
+/* Page Actualités */
+var ndc = $("#news-cat"); if (ndc) ndc.addEventListener("change", () => setNewsCat(ndc.value));
+var ndr = $("#news-refresh"); if (ndr) ndr.addEventListener("click", () => loadNews(true));
 
 /* YouTube */
 var ytks = $("#yt-key-save"); if (ytks) ytks.addEventListener("click", () => {

@@ -12,6 +12,9 @@ Nouveau dossier/
 *.tmp
 *.log
 
+# Certificat de signature privé (jamais publié)
+desktop/cert/
+
 # Environnements
 .env
 .env.local
