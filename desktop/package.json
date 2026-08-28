@@ -35,7 +35,7 @@
           ]
         }
       ],
-      "signAndEditExecutable": false
+      "signAndEditExecutable": true
     },
     "nsis": {
       "artifactName": "Life-Manager-Setup-${version}.exe",
