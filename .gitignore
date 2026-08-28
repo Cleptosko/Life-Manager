@@ -9,6 +9,7 @@ Life Manager Exe/
 
 # Copies d'installation / temporaires
 Nouveau dossier/
+test application exe local/
 *.tmp
 *.log
 
