@@ -4,6 +4,10 @@
   "description": "Life Manager - application de gestion personnelle (agenda, emploi du temps, projets, météo, actualités, YouTube)",
   "main": "main.js",
   "author": "FreeBuff",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Cleptosko/Life-Manager.git"
+  },
   "homepage": "https://github.com/Cleptosko/Life-Manager",
   "license": "MIT",
   "scripts": {
