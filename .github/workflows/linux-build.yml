@@ -20,8 +20,8 @@ jobs:
         run: npm ci
         working-directory: desktop
 
-      - name: Build AppImage and deb
-        run: npx electron-builder --linux AppImage deb
+      - name: Build deb
+        run: npx electron-builder --linux deb
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -31,6 +31,5 @@ jobs:
         with:
           tag_name: v1.0.0
           files: |
-            desktop/dist/*.AppImage
             desktop/dist/*.deb
           fail_on_unmatched_files: false
