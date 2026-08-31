@@ -45,6 +45,7 @@
     },
     "linux": {
       "icon": "build/icon.png",
+      "artifactName": "LifeManager-Linux-${arch}.deb",
       "target": [
         {
           "target": "deb",
@@ -57,7 +58,7 @@
       "maintainer": "FreeBuff"
     },
     "nsis": {
-      "artifactName": "Life-Manager-Setup-${version}.exe",
+      "artifactName": "LifeManager-WindowsSetup-${version}.exe",
       "uninstallDisplayName": "Life Manager",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
